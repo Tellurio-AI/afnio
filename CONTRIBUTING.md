@@ -66,6 +66,7 @@ flake8 .
 /
 ├── afnio/                  # Afnio framework
 │   └── tellurio/           # Tellurio integration
+├── tests/                  # Automated testing
 ├── .vscode/                # VSCode config
 ├── .github/workflows/      # GitHub actions
 ├── README.md
