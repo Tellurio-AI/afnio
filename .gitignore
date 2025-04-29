@@ -172,3 +172,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# VSCode
+.vscode/
+
+# Data folder
+data/
+
+# Temporary folder
+tmp/
