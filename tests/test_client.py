@@ -1,37 +1,10 @@
 import os
 
 import pytest
-from dotenv import load_dotenv
 from keyring import set_keyring
-from keyring.backend import KeyringBackend
 
 from afnio.tellurio.client import TellurioClient
-
-# Load environment variables from .env
-load_dotenv()
-
-
-class InMemoryKeyring(KeyringBackend):
-    """
-    A simple in-memory keyring backend for testing purposes.
-    """
-
-    priority = 1  # High priority to ensure it is used during tests
-
-    def __init__(self):
-        self.store = {}
-
-    def get_password(self, service, username):
-        return self.store.get((service, username))
-
-    def set_password(self, service, username, password):
-        self.store[(service, username)] = password
-
-    def delete_password(self, service, username):
-        if (service, username) in self.store:
-            del self.store[(service, username)]
-        else:
-            raise KeyError("No such password")
+from tests.utils import InMemoryKeyring
 
 
 class TestTellurioClient:
@@ -118,3 +91,19 @@ class TestTellurioClient:
         # Attempt re-login without providing a new API key
         with pytest.raises(ValueError, match="API key is required for re-login."):
             client.login(relogin=True)
+
+    def test_invalid_api_key_not_stored(self):
+        """
+        Test that an invalid API key is not stored in the keyring.
+        """
+        client = TellurioClient()
+
+        # Attempt to log in with an invalid API key
+        response = client.login(api_key="invalid_api_key")
+
+        # Assert that the response is None for an invalid API key
+        assert response is None
+
+        # Assert that the invalid API key was not stored in the keyring
+        stored_api_key = self.test_keyring.get_password("tellurio", "api_key")
+        assert stored_api_key is None
