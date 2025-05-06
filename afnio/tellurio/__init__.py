@@ -1,7 +1,5 @@
-from .client import TellurioClient
-
-# Create a default client instance
-_default_client = TellurioClient()
+from .client import get_default_client
+from .run import init
 
 
 def login(api_key=None, relogin=False):
@@ -16,4 +14,11 @@ def login(api_key=None, relogin=False):
     Returns:
         str: A confirmation message if the API key is valid.
     """
-    return _default_client.login(api_key=api_key, relogin=relogin)
+    client = get_default_client()  # Use the global accessor for _default_client
+    return client.login(api_key=api_key, relogin=relogin)
+
+
+__all__ = ["init", "login"]
+
+# Please keep this list sorted
+assert __all__ == sorted(__all__)

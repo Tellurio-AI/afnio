@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env
 load_dotenv()
 
+# Define the global default client instance
+_default_client = None
+
 
 class TellurioClient:
     def __init__(self, base_url=None):
@@ -64,6 +67,61 @@ class TellurioClient:
                 raise ValueError("Re-login failed due to invalid API key.")
             return None
 
+    def get(self, endpoint: str) -> httpx.Response:
+        """
+        Makes a GET request to the specified endpoint.
+
+        Args:
+            endpoint (str): The API endpoint (relative to the base URL).
+
+        Returns:
+            httpx.Response: The HTTP response object.
+        """
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "*/*",
+        }
+
+        try:
+            with httpx.Client() as client:
+                response = client.get(url, headers=headers)
+            return response
+        except httpx.RequestError as e:
+            logger.error(f"Network error occurred while making GET request: {e}")
+            raise ValueError("Network error occurred. Please check your connection.")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            raise ValueError("An unexpected error occurred. Please try again later.")
+
+    def post(self, endpoint: str, json: dict) -> httpx.Response:
+        """
+        Makes a POST request to the specified endpoint.
+
+        Args:
+            endpoint (str): The API endpoint (relative to the base URL).
+            json (dict): The JSON payload to send in the request.
+
+        Returns:
+            httpx.Response: The HTTP response object.
+        """
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            with httpx.Client() as client:
+                response = client.post(url, headers=headers, json=json)
+            return response
+        except httpx.RequestError as e:
+            logger.error(f"Network error occurred while making POST request: {e}")
+            raise ValueError("Network error occurred. Please check your connection.")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            raise ValueError("An unexpected error occurred. Please try again later.")
+
     def _verify_api_key(self) -> dict:
         """
         Verifies the validity of the API key
@@ -73,14 +131,9 @@ class TellurioClient:
             dict: A dictionary containing the email and message if the API key is valid,
                 None otherwise.
         """
-        endpoint = f"{self.base_url}/api/v0/verify-api-key/"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "*/*",
-        }
+        endpoint = "/api/v0/verify-api-key/"
         try:
-            with httpx.Client() as client:
-                response = client.get(endpoint, headers=headers)
+            response = self.get(endpoint)
 
             if response.status_code == 200:
                 try:
@@ -94,11 +147,19 @@ class TellurioClient:
                 logger.warning("API key is invalid or missing.")
             else:
                 logger.error(f"Error: {response.status_code} - {response.text}")
-        except httpx.RequestError as e:
-            logger.error(f"Network error occurred while verifying API key: {e}")
-            raise ValueError("Network error occurred. Please check your connection.")
-        except Exception as e:
-            logger.error(f"An unexpected error occurred: {e}")
-            raise ValueError("An unexpected error occurred. Please try again later.")
+        except ValueError as e:
+            logger.error(f"Error during API key verification: {e}")
+            raise
 
         return None
+
+
+def get_default_client() -> TellurioClient:
+    """
+    Returns the global default TellurioClient instance. If it doesn't exist,
+    it initializes a new instance.
+    """
+    global _default_client
+    if _default_client is None:
+        _default_client = TellurioClient()  # Initialize the default client
+    return _default_client
