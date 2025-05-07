@@ -122,6 +122,33 @@ class TellurioClient:
             logger.error(f"An unexpected error occurred: {e}")
             raise ValueError("An unexpected error occurred. Please try again later.")
 
+    def delete(self, endpoint: str) -> httpx.Response:
+        """
+        Makes a DELETE request to the specified endpoint.
+
+        Args:
+            endpoint (str): The API endpoint (relative to the base URL).
+
+        Returns:
+            httpx.Response: The HTTP response object.
+        """
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "*/*",
+        }
+
+        try:
+            with httpx.Client() as client:
+                response = client.delete(url, headers=headers)
+            return response
+        except httpx.RequestError as e:
+            logger.error(f"Network error occurred while making DELETE request: {e}")
+            raise ValueError("Network error occurred. Please check your connection.")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            raise ValueError("An unexpected error occurred. Please try again later.")
+
     def _verify_api_key(self) -> dict:
         """
         Verifies the validity of the API key
