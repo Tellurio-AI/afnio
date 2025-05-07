@@ -1,0 +1,195 @@
+import logging
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from slugify import slugify
+
+from afnio.tellurio.client import TellurioClient, get_default_client
+from afnio.tellurio.project import create_project, get_project
+
+logger = logging.getLogger(__name__)
+
+
+class RunStatus(Enum):
+    """
+    Represents the status of a Tellurio Run.
+    """
+
+    RUNNING = "RUNNING"
+    CRASHED = "CRASHED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class RunProject:
+    """
+    Represents a Tellurio Run Project.
+    """
+
+    def __init__(self, uuid: str, display_name: str, slug: str):
+        self.uuid = uuid
+        self.display_name = display_name
+        self.slug = slug
+
+    def __repr__(self):
+        return f"<Project uuid={self.uuid} display_name={self.display_name}>"
+
+
+class RunUser:
+    """
+    Represents a Tellurio Run User.
+    """
+
+    def __init__(self, uuid: str, username: str, slug: str):
+        self.uuid = uuid
+        self.username = username
+        self.slug = slug
+
+    def __repr__(self):
+        return f"<User uuid={self.uuid} username={self.username}>"
+
+
+class Run:
+    """
+    Represents a Tellurio Run.
+    """
+
+    def __init__(
+        self,
+        uuid: str,
+        name: str,
+        description: str,
+        status: RunStatus,
+        date_created: Optional[datetime] = None,
+        date_updated: Optional[datetime] = None,
+        project: Optional[RunProject] = None,
+        user: Optional[RunUser] = None,
+    ):
+        self.uuid = uuid
+        self.name = name
+        self.description = description
+        self.status = RunStatus(status)
+        self.date_created = date_created
+        self.date_updated = date_updated
+        self.project = project
+        self.user = user
+
+    def __repr__(self):
+        return (
+            f"<Run uuid={self.uuid} name={self.name} status={self.status} "
+            f"project={self.project.display_name if self.project else None}>"
+        )
+
+
+def init(
+    namespace_slug: str,
+    project_display_name: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    status: Optional[RunStatus] = RunStatus.RUNNING,
+    client: Optional[TellurioClient] = None,
+) -> Run:
+    """
+    Initializes a new Tellurio Run.
+
+    Args:
+        namespace_slug (str): The namespace slug where the project resides. It can be
+          either an organization slug or a user slug.
+        project_display_name (str): The display name of the project. This will be used
+            to retrive or create the project through its slugified version.
+        name (str, optional): The name of the run. If not provided, a random name is
+            generated (e.g., "brave_pasta_123"). If the name is provided but already
+            exists, an incremental number is appended to the name (e.g., "test_run_1",
+            "test_run_2").
+        description (str, optional): A description of the run.
+        status (str): The status of the run (default: "RUNNING").
+        client (TellurioClient, optional): An instance of TellurioClient. If not
+          provided, the default client will be used.
+
+    Returns:
+        Run: A Run object representing the created run.
+    """
+    client = client or get_default_client()
+
+    # Generate the project's slug from its name
+    project_slug = slugify(project_display_name)
+
+    # Ensure the project exists
+    try:
+        project_obj = get_project(
+            namespace_slug=namespace_slug,
+            project_slug=project_slug,
+            client=client,
+        )
+        logger.info(f"Project with slug '{project_slug}' already exists.")
+    except Exception:
+        logger.info(
+            f"Project with slug '{project_slug}' does not exist. "
+            f"Creating it now with RESTRICTED visibility."
+        )
+        project_obj = create_project(
+            namespace_slug=namespace_slug,
+            display_name=project_display_name,
+            visibility="RESTRICTED",
+            client=client,
+        )
+
+    # Dynamically construct the payload to exclude None values
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if description is not None:
+        payload["description"] = description
+    if status is not None:
+        payload["status"] = status.value
+
+    # Create the run
+    endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/"
+
+    try:
+        response = client.post(endpoint, json=payload)
+
+        if response.status_code == 201:
+            data = response.json()
+            logger.info(f"Run created successfully: {data}")
+
+            # Parse date fields
+            date_created = datetime.fromisoformat(
+                data["date_created"].replace("Z", "+00:00")
+            )
+            date_updated = datetime.fromisoformat(
+                data["date_updated"].replace("Z", "+00:00")
+            )
+
+            # Parse project and user fields
+            project_obj = RunProject(
+                uuid=data["project"]["uuid"],
+                display_name=data["project"]["display_name"],
+                slug=data["project"]["slug"],
+            )
+            user_obj = RunUser(
+                uuid=data["user"]["uuid"],
+                username=data["user"]["username"],
+                slug=data["user"]["slug"],
+            )
+
+            # Create and return the Run object
+            return Run(
+                uuid=data["uuid"],
+                name=data["name"],
+                description=data["description"],
+                status=RunStatus(data["status"]),
+                date_created=date_created,
+                date_updated=date_updated,
+                project=project_obj,
+                user=user_obj,
+            )
+        else:
+            logger.error(
+                f"Failed to create run: {response.status_code} - {response.text}"
+            )
+            response.raise_for_status()
+    except Exception as e:
+        logger.error(f"An error occurred while creating the run: {e}")
+        raise
