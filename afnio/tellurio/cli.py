@@ -5,6 +5,7 @@ import keyring
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio import login as module_login
+from afnio.tellurio.client import InvalidAPIKeyError
 
 # Configure logging
 configure_logging()
@@ -63,6 +64,9 @@ def login(api_key, relogin):
         else:
             click.echo("Login failed. Invalid API key.")
             logger.warning("Login attempt failed.")
+    except InvalidAPIKeyError as e:
+        click.echo(f"Login failed: {e}")
+        logger.error(f"Login failed: {e}")
     except ValueError as e:
         click.echo(f"Login failed: {e}")
         logger.error(f"Login failed: {e}")
