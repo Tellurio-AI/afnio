@@ -2,8 +2,9 @@ import os
 from typing import List
 
 import pytest
+import pytest_asyncio
 
-from afnio.tellurio.client import TellurioClient
+from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import Project, create_project, delete_project
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
@@ -69,3 +70,18 @@ def delete_project_fixture(client):
             project_slug=project.slug,
             client=client,
         )
+
+
+@pytest_asyncio.fixture
+async def close_ws_client():
+    """
+    Fixture to ensure the WebSocket client is closed after each test that uses it.
+    """
+    _, ws_client = get_default_client()
+    assert ws_client is not None
+
+    # Provide the WebSocket client to the test
+    yield ws_client
+
+    # Cleanup: Close the WebSocket client after the test
+    await ws_client.close()

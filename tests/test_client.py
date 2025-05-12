@@ -3,7 +3,7 @@ import os
 import pytest
 from keyring import set_keyring
 
-from afnio.tellurio.client import TellurioClient
+from afnio.tellurio.client import InvalidAPIKeyError, TellurioClient
 from tests.utils import InMemoryKeyring
 
 
@@ -27,7 +27,7 @@ class TestTellurioClient:
         response = client.login(api_key=api_key)
 
         # Assert that the response is a success message
-        assert response == "API key is valid for user 'test@tellurio.ai'."
+        assert response == "test@tellurio.ai"
 
         # Assert that the API key was stored in the test keyring
         stored_api_key = self.test_keyring.get_password("tellurio", "api_key")
@@ -38,10 +38,16 @@ class TestTellurioClient:
         Test that an invalid API key returns None and does not log in.
         """
         client = TellurioClient()
-        response = client.login(api_key="invalid_api_key")
 
-        # Assert that the response is None for an invalid API key
-        assert response is None
+        with pytest.raises(
+            InvalidAPIKeyError, match="Login failed due to invalid API key."
+        ):
+            client.login(api_key="invalid_api_key")
+
+        with pytest.raises(
+            InvalidAPIKeyError, match="Re-login failed due to invalid API key."
+        ):
+            client.login(api_key="invalid_api_key", relogin=True)
 
     def test_login_stored_api_key(self):
         """
@@ -57,7 +63,7 @@ class TestTellurioClient:
         response = client.login()
 
         # Assert that the response is a success message
-        assert response == "API key is valid for user 'test@tellurio.ai'."
+        assert response == "test@tellurio.ai"
 
     def test_login_relogin_with_new_api_key(self):
         """
@@ -73,7 +79,7 @@ class TestTellurioClient:
         response = client.login(api_key=new_api_key, relogin=True)
 
         # Assert that the response is a success message
-        assert response == "API key is valid for user 'test@tellurio.ai'."
+        assert response == "test@tellurio.ai"
 
         # Assert that the new API key was stored in the test keyring
         stored_api_key = self.test_keyring.get_password("tellurio", "api_key")
@@ -99,10 +105,10 @@ class TestTellurioClient:
         client = TellurioClient()
 
         # Attempt to log in with an invalid API key
-        response = client.login(api_key="invalid_api_key")
-
-        # Assert that the response is None for an invalid API key
-        assert response is None
+        with pytest.raises(
+            InvalidAPIKeyError, match="Login failed due to invalid API key."
+        ):
+            client.login(api_key="invalid_api_key")
 
         # Assert that the invalid API key was not stored in the keyring
         stored_api_key = self.test_keyring.get_password("tellurio", "api_key")

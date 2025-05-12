@@ -19,7 +19,8 @@ def setup_keyring():
     yield test_keyring
 
 
-def test_login_success(setup_keyring):
+@pytest.mark.asyncio
+async def test_login_success(setup_keyring, close_ws_client):
     """
     Test the CLI login command with a valid API key.
     """
@@ -43,14 +44,14 @@ def test_login_invalid_api_key(setup_keyring):
     runner = CliRunner()
     result = runner.invoke(cli, ["login"], input="invalid_api_key\n")
     assert result.exit_code == 0
-    assert "Login failed. Invalid API key." in result.output
+    assert "Login failed: Login failed due to invalid API key." in result.output
 
     # Verify the invalid API key is not stored in the in-memory keyring
     stored_api_key = setup_keyring.get_password("tellurio", "api_key")
     assert stored_api_key is None
 
 
-def test_login_relogin(setup_keyring):
+def test_login_relogin(setup_keyring, close_ws_client):
     """
     Test the CLI login command with the --relogin option.
     """

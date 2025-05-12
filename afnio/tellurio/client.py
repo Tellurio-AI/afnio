@@ -6,6 +6,7 @@ import keyring
 from dotenv import load_dotenv
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 # Configure logging
 configure_logging()
@@ -14,30 +15,68 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env
 load_dotenv()
 
-# Define the global default client instance
+# Define the global default client instances
 _default_client = None
+_default_ws_client = None
+
+
+class InvalidAPIKeyError(Exception):
+    """Exception raised when the API key is invalid."""
+
+    pass
 
 
 class TellurioClient:
-    def __init__(self, base_url=None):
-        # Use the base_url from environment variables, or default to production
+    """
+    A client for interacting with the Tellurio backend.
+
+    This client provides methods for authenticating with the backend, making HTTP
+    requests (GET, POST, DELETE), and verifying API keys. It is designed to simplify
+    communication with the Tellurio platform.
+    """
+
+    def __init__(self, base_url: str = None, port: int = None):
+        """
+        Initializes the TellurioClient instance.
+
+        Args:
+            base_url (str, optional): The base URL of the Tellurio backend. If not
+                provided, it defaults to the value of the
+                `TELLURIO_BACKEND_HTTP_BASE_URL` environment variable
+                or "https://platform.tellurio.ai".
+            port (int, optional): The port number for the backend. If not provided,
+                it defaults to the value of the `TELLURIO_BACKEND_HTTP_PORT`
+                environment variable or 443.
+        """
         self.base_url = base_url or os.getenv(
-            "TELLURIO_BASE_URL", "https://platform.tellurio.ai"
+            "TELLURIO_BACKEND_HTTP_BASE_URL", "https://platform.tellurio.ai"
         )
-        self.service_name = "tellurio"  # Service name for keyring
+        self.port = port or os.getenv("TELLURIO_BACKEND_HTTP_PORT", 443)
+        self.url = f"{self.base_url}:{self.port}"
+        self.service_name = os.getenv(
+            "KEYRING_SERVICE_NAME", "tellurio"
+        )  # Service name for keyring
         self.api_key = None
 
-    def login(self, api_key=None, relogin=False):
+    def login(self, api_key: str = None, relogin: bool = False):
         """
         Logs in the user using an API key and verifies its validity.
 
+        This method allows the user to provide an API key or retrieve a stored API key
+        from the system. It verifies the API key by calling the backend and securely
+        stores it using the `keyring` library if valid.
+
         Args:
-            api_key (str, optional): The user's API key. If not provided, it will be
-                read from the local system.
-            relogin (bool): If True, forces a re-login and requests a new API key.
+            api_key (str, optional): The user's API key. If not provided, the method
+                attempts to retrieve a stored API key from the local system.
+            relogin (bool): If True, forces a re-login and requires the user to provide
+                a new API key.
 
         Returns:
-            str: A confirmation message if the API key is valid.
+            str: The email address associated with the API key if valid.
+
+        Raises:
+            ValueError: If the API key is invalid or not provided during re-login.
         """
         # Use the provided API key if passed, otherwise check for stored key
         if api_key:
@@ -60,12 +99,12 @@ class TellurioClient:
 
             email = response_data.get("email", "unknown user")
             logger.info(f"API key is valid for user '{email}'.")
-            return f"API key is valid for user '{email}'."
+            return email
         else:
             logger.warning("Invalid API key. Please provide a valid API key.")
             if relogin:
-                raise ValueError("Re-login failed due to invalid API key.")
-            return None
+                raise InvalidAPIKeyError("Re-login failed due to invalid API key.")
+            raise InvalidAPIKeyError("Login failed due to invalid API key.")
 
     def get(self, endpoint: str) -> httpx.Response:
         """
@@ -77,9 +116,9 @@ class TellurioClient:
         Returns:
             httpx.Response: The HTTP response object.
         """
-        url = f"{self.base_url}{endpoint}"
+        url = f"{self.url}{endpoint}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Api-Key {self.api_key}",
             "Accept": "*/*",
         }
 
@@ -105,9 +144,9 @@ class TellurioClient:
         Returns:
             httpx.Response: The HTTP response object.
         """
-        url = f"{self.base_url}{endpoint}"
+        url = f"{self.url}{endpoint}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Api-Key {self.api_key}",
             "Content-Type": "application/json",
         }
 
@@ -132,9 +171,9 @@ class TellurioClient:
         Returns:
             httpx.Response: The HTTP response object.
         """
-        url = f"{self.base_url}{endpoint}"
+        url = f"{self.url}{endpoint}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Api-Key {self.api_key}",
             "Accept": "*/*",
         }
 
@@ -181,12 +220,25 @@ class TellurioClient:
         return None
 
 
-def get_default_client() -> TellurioClient:
+def get_default_client() -> tuple[TellurioClient, TellurioWebSocketClient]:
     """
-    Returns the global default TellurioClient instance. If it doesn't exist,
-    it initializes a new instance.
+    Returns the global default TellurioClient instance.
+
+    This function initializes a global instance of the TellurioClient if it does not
+    already exist and returns it. The global instance can be used as a singleton for
+    interacting with the backend.
+
+    Returns:
+        TellurioClient: The global default TellurioClient instance.
     """
-    global _default_client
+    global _default_client, _default_ws_client
+
     if _default_client is None:
-        _default_client = TellurioClient()  # Initialize the default client
-    return _default_client
+        # Initialize the default HTTP client
+        _default_client = TellurioClient()
+
+    if _default_ws_client is None:
+        # Initialize default WebSocket client
+        _default_ws_client = TellurioWebSocketClient()
+
+    return _default_client, _default_ws_client
