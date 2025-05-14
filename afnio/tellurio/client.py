@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -7,6 +8,9 @@ from dotenv import load_dotenv
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
+
+# Path to the configuration file
+CONFIG_PATH = os.path.expanduser("~/.tellurio_config.json")
 
 # Configure logging
 configure_logging()
@@ -18,6 +22,28 @@ load_dotenv()
 # Define the global default client instances
 _default_client = None
 _default_ws_client = None
+
+
+def save_username(username):
+    """
+    Saves the username to a JSON configuration file.
+    This function creates a JSON file at the specified path and stores the username
+    in it. If the file already exists, it will be overwritten.
+    """
+    with open(CONFIG_PATH, "w") as f:
+        json.dump({"username": username}, f)
+
+
+def load_username():
+    """
+    Loads the username from a JSON configuration file.
+    This function reads the JSON file at the specified path and retrieves the username
+    stored in it. If the file does not exist, it returns None.
+    """
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, "r") as f:
+            return json.load(f).get("username")
+    return None
 
 
 class InvalidAPIKeyError(Exception):
@@ -54,7 +80,7 @@ class TellurioClient:
         self.port = port or os.getenv("TELLURIO_BACKEND_HTTP_PORT", 443)
         self.url = f"{self.base_url}:{self.port}"
         self.service_name = os.getenv(
-            "KEYRING_SERVICE_NAME", "tellurio"
+            "KEYRING_SERVICE_NAME", "Tellurio"
         )  # Service name for keyring
         self.api_key = None
 
@@ -83,7 +109,8 @@ class TellurioClient:
             self.api_key = api_key
             logger.info("API key provided and stored securely.")
         elif not relogin:
-            self.api_key = keyring.get_password(self.service_name, "api_key")
+            username = load_username()
+            self.api_key = keyring.get_password(self.service_name, username)
             if self.api_key:
                 logger.info("Using stored API key from keyring.")
             else:
@@ -95,11 +122,18 @@ class TellurioClient:
         response_data = self._verify_api_key()
         if response_data:
             # Save the API key securely only if it's valid
-            keyring.set_password(self.service_name, "api_key", self.api_key)
+            keyring.set_password(
+                self.service_name, response_data["username"], self.api_key
+            )
+            save_username(response_data["username"])
 
             email = response_data.get("email", "unknown user")
-            logger.info(f"API key is valid for user '{email}'.")
-            return email
+            username = response_data.get("username", "unknown user")
+            logger.info(f"API key is valid for user '{username}'.")
+            return {
+                "email": email,
+                "username": username,
+            }
         else:
             logger.warning("Invalid API key. Please provide a valid API key.")
             if relogin:

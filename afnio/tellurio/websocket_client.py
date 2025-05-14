@@ -104,7 +104,7 @@ class TellurioWebSocketClient:
                 response = await self.connection.recv()
                 response_data = json.loads(response)
                 session_id = response_data.get("result", {}).get("session_id")
-                return session_id
+                return {"session_id": session_id}
             except Exception as e:
                 logger.error(f"Failed to connect to WebSocket: {e}")
                 if attempt < retries - 1:

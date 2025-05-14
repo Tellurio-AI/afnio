@@ -1,15 +1,31 @@
 import os
+import tempfile
 from typing import List
 
 import pytest
 import pytest_asyncio
 
+from afnio.tellurio import client as tellurio_client_module
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import Project, create_project, delete_project
+from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
 TEST_ORG_SLUG = os.getenv("TEST_ORG_SLUG", "tellurio-test")
 TEST_PROJECT = os.getenv("TEST_PROJECT", "Test Project")
+
+
+@pytest.fixture(autouse=True)
+def patch_config_path(monkeypatch):
+    # Create a temporary file for the config
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        dummy_config_path = tmp.name
+    # Patch the CONFIG_PATH in the tellurio_client_module
+    monkeypatch.setattr(tellurio_client_module, "CONFIG_PATH", dummy_config_path)
+    yield
+    # Clean up the file after the test
+    if os.path.exists(dummy_config_path):
+        os.remove(dummy_config_path)
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +86,26 @@ def delete_project_fixture(client):
             project_slug=project.slug,
             client=client,
         )
+
+
+@pytest_asyncio.fixture
+async def connected_ws_client():
+    """
+    Fixture to create and connect a TellurioWebSocketClient instance for testing.
+    Ensures the connection is properly closed after the test.
+    """
+    client = TellurioWebSocketClient(
+        base_url=os.getenv(
+            "TELLURIO_BACKEND_WS_BASE_URL", "wss://platform.tellurio.ai"
+        ),
+        port=int(os.getenv("TELLURIO_BACKEND_WS_PORT", 443)),
+        default_timeout=10,
+    )
+    await client.connect(api_key=os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key"))
+    try:
+        yield client
+    finally:
+        await client.close()
 
 
 @pytest_asyncio.fixture

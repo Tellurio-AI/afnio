@@ -18,6 +18,7 @@ async def test_login_success(close_ws_client):
 
     # Assert the result contains the expected keys
     assert "email" in result
+    assert "username" in result
     assert "session_id" in result
 
 

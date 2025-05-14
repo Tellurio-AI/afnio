@@ -54,18 +54,20 @@ def login(api_key: str = None, relogin=False):
 
         try:
             # Perform HTTP login
-            email = client.login(api_key=api_key, relogin=relogin)
-            logger.info(f"HTTP login successful for user '{email}'.")
+            login_info = client.login(api_key=api_key, relogin=relogin)
+            logger.info(f"HTTP login successful for user '{login_info['username']}'.")
 
             # Perform WebSocket login
-            session_id = await ws_client.connect(api_key=client.api_key)
+            ws_info = await ws_client.connect(api_key=client.api_key)
             logger.info(
-                f"WebSocket connection established with session ID '{session_id}'."
+                f"WebSocket connection established "
+                f"with session ID '{ws_info['session_id']}'."
             )
 
             return {
-                "email": email,
-                "session_id": session_id,
+                "email": login_info.get("email"),
+                "username": login_info.get("username"),
+                "session_id": ws_info.get("session_id"),
             }
         except ValueError as e:
             logger.error(f"HTTP login failed: {e}")

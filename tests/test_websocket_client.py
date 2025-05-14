@@ -1,29 +1,8 @@
 import os
 
 import pytest
-import pytest_asyncio
 
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
-
-
-@pytest_asyncio.fixture
-async def connected_ws_client():
-    """
-    Fixture to create and connect a TellurioWebSocketClient instance for testing.
-    Ensures the connection is properly closed after the test.
-    """
-    client = TellurioWebSocketClient(
-        base_url=os.getenv(
-            "TELLURIO_BACKEND_WS_BASE_URL", "wss://platform.tellurio.ai"
-        ),
-        port=int(os.getenv("TELLURIO_BACKEND_WS_PORT", 443)),
-        default_timeout=10,
-    )
-    await client.connect(api_key=os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key"))
-    try:
-        yield client
-    finally:
-        await client.close()
 
 
 @pytest.mark.asyncio
