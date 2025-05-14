@@ -20,7 +20,7 @@ def setup_keyring():
 
 
 @pytest.mark.asyncio
-async def test_login_success(setup_keyring, close_ws_client):
+async def test_login_success(setup_keyring):
     """
     Test the CLI login command with a valid API key.
     """
@@ -56,7 +56,7 @@ def test_login_invalid_api_key(setup_keyring):
     assert stored_api_key is None
 
 
-def test_login_relogin(setup_keyring, close_ws_client):
+def test_login_relogin(setup_keyring):
     """
     Test the CLI login command with the --relogin option.
     """

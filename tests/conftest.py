@@ -3,12 +3,11 @@ import tempfile
 from typing import List
 
 import pytest
-import pytest_asyncio
 
 from afnio.tellurio import client as tellurio_client_module
+from afnio.tellurio._eventloop import _event_loop_thread
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import Project, create_project, delete_project
-from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
 TEST_ORG_SLUG = os.getenv("TEST_ORG_SLUG", "tellurio-test")
@@ -17,6 +16,11 @@ TEST_PROJECT = os.getenv("TEST_PROJECT", "Test Project")
 
 @pytest.fixture(autouse=True)
 def patch_config_path(monkeypatch):
+    """
+    Fixture to patch the CONFIG_PATH in the tellurio_client_module
+    to use a temporary file for testing.
+    This prevents the need for a real config file during tests.
+    """
     # Create a temporary file for the config
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         dummy_config_path = tmp.name
@@ -88,36 +92,23 @@ def delete_project_fixture(client):
         )
 
 
-@pytest_asyncio.fixture
-async def connected_ws_client():
+@pytest.fixture(scope="session", autouse=True)
+def shutdown_event_loop_thread():
     """
-    Fixture to create and connect a TellurioWebSocketClient instance for testing.
-    Ensures the connection is properly closed after the test.
+    Fixture to shut down the event loop thread after all tests in the module.
+    This ensures that the WebSocket client is properly closed and the event loop
+    thread is cleaned up.
     """
-    client = TellurioWebSocketClient(
-        base_url=os.getenv(
-            "TELLURIO_BACKEND_WS_BASE_URL", "wss://platform.tellurio.ai"
-        ),
-        port=int(os.getenv("TELLURIO_BACKEND_WS_PORT", 443)),
-        default_timeout=10,
-    )
-    await client.connect(api_key=os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key"))
+    yield
+
+    # Close the WebSocket client if it exists
     try:
-        yield client
-    finally:
-        await client.close()
+        _, ws_client = get_default_client()
+        if ws_client and ws_client.connection:
+            # Use the event loop thread to close the client
+            _event_loop_thread.run(ws_client.close())
+    except Exception:
+        pass
 
-
-@pytest_asyncio.fixture
-async def close_ws_client():
-    """
-    Fixture to ensure the WebSocket client is closed after each test that uses it.
-    """
-    _, ws_client = get_default_client()
-    assert ws_client is not None
-
-    # Provide the WebSocket client to the test
-    yield ws_client
-
-    # Cleanup: Close the WebSocket client after the test
-    await ws_client.close()
+    # Now shut down the event loop thread
+    _event_loop_thread.shutdown()

@@ -229,8 +229,10 @@ class TellurioWebSocketClient:
 
         if self.connection:
             logger.info("Closing WebSocket connection...")
-            await self.connection.close()
-            self.connection = None
+            try:
+                await self.connection.close()
+            finally:
+                self.connection = None
 
         logger.info("Clearing pending requests...")
         self._cancel_pending_requests()  # Clear pending requests

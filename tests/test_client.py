@@ -5,7 +5,10 @@ import pytest
 from keyring import set_keyring
 
 from afnio.tellurio import client as tellurio_client_module
-from afnio.tellurio.client import InvalidAPIKeyError, TellurioClient
+from afnio.tellurio.client import (
+    InvalidAPIKeyError,
+    TellurioClient,
+)
 from tests.utils import InMemoryKeyring
 
 

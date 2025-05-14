@@ -1,7 +1,8 @@
-import asyncio
+import atexit
 import logging
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._eventloop import _event_loop_thread, run_in_background_loop
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 from .client import InvalidAPIKeyError, get_default_client
@@ -91,35 +92,36 @@ def login(api_key: str = None, relogin=False):
             await _close_ws_connection(ws_client, "an unexpected error")
             raise
 
-    return _run_in_context(_login())  # Handle both sync and async contexts
+    return run_in_background_loop(_login())  # Handle both sync and async contexts
 
 
-def _run_in_context(coro):
+def _close_singleton_ws_client():
     """
-    Runs a coroutine in the appropriate context (sync or async).
-    Handles event loop issues (e.g., Jupyter or nested loops) automatically.
-
-    Args:
-        coro (coroutine): The coroutine to execute.
-
-    Returns:
-        The gathered responses from the coroutine.
+    Closes the singleton WebSocket client if it exists.
+    This function is registered to be called at interpreter shutdown to ensure
+    that the WebSocket connection is properly closed and resources are cleaned up.
     """
-    loop = None
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        pass  # No event loop running
+        _, ws_client = get_default_client()
+        if ws_client and ws_client.connection:
+            run_in_background_loop(ws_client.close())
+    except Exception as e:
+        logger.error(f"Error closing WebSocket client: {e}")
+        pass  # Avoid raising errors at interpreter shutdown
 
-    if loop and loop.is_running():
-        # Running inside an existing event loop (e.g., Jupyter Notebook)
-        import nest_asyncio
 
-        nest_asyncio.apply()
-        return loop.run_until_complete(coro)
-    else:
-        # No event loop is running, start a new one
-        return asyncio.run(coro)
+def _shutdown():
+    """
+    Closes the singleton WebSocket client and shuts down the event loop thread.
+    Registered with atexit to ensure proper cleanup at interpreter shutdown.
+    """
+    try:
+        _close_singleton_ws_client()
+    finally:
+        _event_loop_thread.shutdown()
+
+
+atexit.register(_shutdown)
 
 
 __all__ = ["init", "login"]
