@@ -28,9 +28,14 @@ def login(api_key: str = None, relogin=False):
             a new API key.
 
     Returns:
-        dict: A dictionary containing the email used for login and the session ID
-            for the WebSocket connection.
-            Example: {"email": "user@example.com", "session_id": "1234567890"}
+        dict: A dictionary containing the user's email, username, and session ID
+        for the WebSocket connection.
+        Example:
+            {
+                "email": "user@example.com",
+                "username": "user123",
+                "session_id": "abc123xyz"
+            }
 
     Raises:
         ValueError: If the API key is invalid or not provided during re-login.

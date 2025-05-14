@@ -99,7 +99,7 @@ class TellurioClient:
                 a new API key.
 
         Returns:
-            str: The email address associated with the API key if valid.
+            dict: A dictionary containing the user's email and username.
 
         Raises:
             ValueError: If the API key is invalid or not provided during re-login.
@@ -228,8 +228,8 @@ class TellurioClient:
         by calling the /api/v0/verify-api-key/ endpoint.
 
         Returns:
-            dict: A dictionary containing the email and message if the API key is valid,
-                None otherwise.
+            dict: A dictionary containing the user's email, username and a message
+            indicating if the API key is valid, None otherwise.
         """
         endpoint = "/api/v0/verify-api-key/"
         try:
