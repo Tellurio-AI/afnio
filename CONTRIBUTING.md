@@ -47,7 +47,9 @@ Then, edit the `.env` file and update the values as needed. For example, to use 
 backend:
 
 ```python
-export TELLURIO_BASE_URL="http://localhost:8000"
+export TELLURIO_BACKEND_HTTP_BASE_URL="http://localhost:8000"
+export TELLURIO_BACKEND_HTTP_PORT="8000"
+export TELLURIO_BACKEND_WS_PORT="8001"
 ```
 
 > **Note**: This step is only required if you need a custom configuration. Otherwise,
