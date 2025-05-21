@@ -3,15 +3,32 @@ import json
 import logging
 import os
 import uuid
+from typing import Any, Dict, Optional
 
 import websockets
 from websockets.exceptions import ConnectionClosed
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._node_registry import (
+    create_and_append_edge,
+    create_node,
+)
+from afnio.tellurio._variable_registry import (
+    suppress_variable_notifications,
+    update_local_variable_field,
+)
 
 # Configure logging
 configure_logging()
 logger = logging.getLogger(__name__)
+
+
+# JSON-RPC error codes
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
+METHOD_NOT_FOUND = -32601
+INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
 
 
 class TellurioWebSocketClient:
@@ -116,11 +133,21 @@ class TellurioWebSocketClient:
 
     async def _listener(self):
         """
-        Listens for incoming WebSocket messages and resolves pending requests.
+        Continuously listens for and processes incoming WebSocket messages.
 
-        This method runs as a background task and continuously listens for messages
-        from the WebSocket server. It matches responses to their corresponding requests
-        using the `req_id` and resolves the associated futures.
+        This method runs as a background task and handles all incoming messages from the
+        WebSocket server according to the JSON-RPC 2.0 protocol. It supports:
+
+        - Resolving responses to client-initiated requests by matching them with their
+          corresponding request IDs and completing the associated futures.
+        - Handling server-initiated JSON-RPC requests and notifications by dispatching
+          them to the appropriate handler methods (e.g., `rpc_update_variable`).
+        - Sending JSON-RPC responses or error messages back to the server as needed.
+        - Logging and reporting protocol errors, unexpected messages, or exceptions.
+        - Attempting to reconnect if the WebSocket connection is closed unexpectedly.
+
+        This method ensures robust, asynchronous, and standards-compliant communication
+        between the client and the Tellurio backend.
 
         Raises:
             ConnectionClosed: If the WebSocket connection is closed.
@@ -130,9 +157,22 @@ class TellurioWebSocketClient:
             async for message in self.connection:
                 logger.debug(f"Received message: {message}")
                 try:
-                    data = json.loads(message)
+                    data: Dict[str, Any] = json.loads(message)
                     req_id = data.get("id")
-                    if req_id:
+
+                    # Validate JSON-RPC version
+                    jsonrpc_version = data.get("jsonrpc")
+                    if jsonrpc_version != "2.0":
+                        logger.warning(f"Invalid JSON-RPC version: {jsonrpc_version}")
+                        await self._send_error(
+                            req_id,
+                            INVALID_REQUEST,
+                            "Invalid JSON-RPC version. Expected '2.0'.",
+                        )
+                        continue
+
+                    # Handle JSON-RPC responses to client-initiated requests
+                    if req_id and "method" not in data:
                         future = self.pending.pop(req_id, None)
                         if future:
                             # Handle both success and error responses
@@ -146,15 +186,196 @@ class TellurioWebSocketClient:
                                     ValueError(f"Unexpected response format: {data}")
                                 )
                         else:
-                            logger.warning(f"Unexpected message or missing ID: {data}")
+                            logger.warning(f"Unexpected data or missing ID: {data}")
+                        continue
+
+                    # Handle JSON-RPC requests and notifications (must have "method")
+                    if "method" not in data:
+                        logger.warning("Invalid request. Missing 'method' field.")
+                        await self._send_error(
+                            req_id,
+                            INVALID_REQUEST,
+                            "Missing required field: method",
+                        )
+                        continue
+
+                    # Handle the RPC method
+                    method = data.get("method")
+                    handler = getattr(self, f"rpc_{method}", None)
+                    if not handler:
+                        logger.warning(f"RPC method not found: {method}")
+                        await self._send_error(
+                            req_id,
+                            METHOD_NOT_FOUND,
+                            f"Method '{method}' not found.",
+                            {"method": method},
+                        )
+                        continue
+
+                    # Handle notifications (no id): do not send a response
+                    if req_id is None:
+                        logger.info(
+                            f"Received notification for method '{method}' "
+                            f"with params: {data.get('params', {})}"
+                        )
+                        await handler(data.get("params", {}))
+                        continue
+
+                    # Handle request (with id): execute RPC method and send response
+                    params = data.get("params", {})
+                    logger.info(
+                        f"RPC method call: method={method!r} "
+                        f"params={params!r} id={req_id!r}"
+                    )
+
+                    result = await handler(params)
+
+                    # Send the response
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": result,
+                    }
+                    logger.info(
+                        f"RPC method executed successfully: method={method!r} "
+                        f"result={result!r} id={req_id!r}"
+                    )
+                    await self.connection.send(json.dumps(response))
+
                 except json.JSONDecodeError as e:
-                    logger.error(f"Failed to decode JSON message: {e}")
+                    logger.error(f"Failed to decode JSON data: {e}")
+                    await self._send_error(
+                        req_id, PARSE_ERROR, "Parse error", {"error": str(e)}
+                    )
+                except KeyError as e:
+                    logger.error(f"Missing key in request: {e}")
+                    await self._send_error(
+                        req_id,
+                        INVALID_PARAMS,
+                        f"Missing key: {e}",
+                        {"missing_key": str(e)},
+                    )
+                except Exception as e:
+                    logger.error(f"Unexpected error: {e}")
+                    await self._send_error(
+                        req_id, INTERNAL_ERROR, "Internal error", {"exception": str(e)}
+                    )
+
         except ConnectionClosed as e:
             logger.warning(f"WebSocket connection closed: {e}")
             await asyncio.sleep(1)  # Add a delay before reconnecting
             await self.connect()  # Attempt to reconnect
         except Exception as e:
             logger.error(f"Unexpected error in listener: {e}")
+
+    async def rpc_update_variable(self, params):
+        """
+        Handle the 'update_variable' JSON-RPC method from the server.
+
+        This method updates a specific field of a registered Variable instance
+        in response to a server notification. It uses the provided parameters
+        to identify the variable and the field to update.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "variable_id": The unique identifier of the Variable.
+                - "field": The field name to update.
+                - "value": The new value to set for the field.
+
+        Returns:
+            dict: A dictionary with a success message if the update is successful.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If the update fails for any reason.
+        """
+        try:
+            with suppress_variable_notifications():
+                update_local_variable_field(
+                    params["variable_id"], params["field"], params["value"]
+                )
+                logger.info(
+                    f"Variable updated: variable_id={params['variable_id']!r} "
+                    f"field={params['field']!r} value={params['value']!r}"
+                )
+                return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+
+    async def rpc_create_node(self, params):
+        """
+        Handle the 'create_node' JSON-RPC method from the server.
+
+        This method creates and registers a new Node instance in the local registry
+        using the provided parameters. It is typically called when the server notifies
+        the client that a new node has been created in the computation graph.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "node_id": The unique identifier of the Node.
+                - "name": The class name or type of the Node.
+
+        Returns:
+            dict: A dictionary with a success message if the node is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+        """
+        try:
+            create_node(params)
+            logger.info(
+                f"Node created: node_id={params['node_id']!r} name={params['name']!r}"
+            )
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+
+    async def rpc_create_edge(self, params):
+        """
+        Handle the 'create_edge' JSON-RPC method from the server.
+
+        This method creates a GradientEdge between two nodes in the local registry,
+        appending the edge to the from_node's next_functions. It is typically called
+        when the server notifies the client that a new edge has been created in the
+        computation graph.
+
+        Note:
+            The terms 'from_node' and 'to_node' should be interpreted in the context
+            of the backward pass (backpropagation): the edge is added to the
+            from_node's next_functions and points to the to_node, following the
+            direction of gradient flow during backpropagation.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "from_node_id": The unique identifier of the source node.
+                - "to_node_id": The unique identifier of the destination node.
+                - "output_nr": The output number associated with the edge.
+
+        Returns:
+            dict: A dictionary with a success message if the edge is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+        """
+        try:
+            create_and_append_edge(params)
+            logger.info(
+                f"Edge created: from_node_id={params['from_node_id']!r} "
+                f"to_node_id={params['to_node_id']!r} output_nr={params['output_nr']!r}"
+            )
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
 
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """
@@ -207,8 +428,9 @@ class TellurioWebSocketClient:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
             logger.error(f"Request timed out: {request}")
-            self.pending.pop(req_id, None)
             raise
+        finally:
+            self.pending.pop(req_id, None)
 
     async def close(self):
         """
@@ -238,6 +460,38 @@ class TellurioWebSocketClient:
         self._cancel_pending_requests()  # Clear pending requests
 
         logger.info("WebSocket connection closed.")
+
+    async def _send_error(
+        self,
+        req_id: Optional[str],
+        code: int,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Send an error response to the server.
+
+        Args:
+            req_id (Optional[str]): The ID of the request that caused the error.
+            code (int): The JSON-RPC error code.
+            message (str): A description of the error.
+            data (Optional[Dict[str, Any]]): Additional data about the error.
+        """
+        logger.warning(
+            f"Sending error response. ID: {req_id}, Code: {code}, "
+            f"Message: {message}, Data: {data}"
+        )
+        error_response = {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {
+                "code": code,
+                "message": message,
+            },
+        }
+        if data:
+            error_response["error"]["data"] = data
+        await self.connection.send(json.dumps(error_response))
 
     async def __aenter__(self):
         """

@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import run_in_background_loop
-from afnio.tellurio._variable_registry import register_variable
+from afnio.tellurio._variable_registry import (
+    is_variable_notify_suppressed,
+    register_variable,
+)
 from afnio.tellurio.client import get_default_client
 
 # Import `Node` only for type hints to avoid runtime circular imports; `TYPE_CHECKING`
@@ -51,7 +54,6 @@ class Variable:
 
     _retain_grad: bool
     is_leaf: bool
-    variable_id: Optional[str]
     r"""All Variables that have :attr:`requires_grad` which is ``False`` will be leaf
     Variables by convention.
 
@@ -85,6 +87,7 @@ class Variable:
         True
         # e requires gradients and has no operations creating it
     """  # noqa: E501
+    variable_id: Optional[str]
 
     def __init__(
         self,
@@ -570,6 +573,9 @@ class Variable:
             field (str): The name of the field that changed.
             value: The new value of the field.
         """
+        if is_variable_notify_suppressed():
+            return  # Do not notify server
+
         if self.variable_id is None:
             logger.error(
                 f"Cannot notify server: "
