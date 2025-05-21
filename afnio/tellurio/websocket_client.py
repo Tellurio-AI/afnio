@@ -9,6 +9,10 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._node_registry import (
+    create_and_append_edge,
+    create_node,
+)
 from afnio.tellurio._variable_registry import (
     suppress_variable_notifications,
     update_local_variable_field,
@@ -265,10 +269,34 @@ class TellurioWebSocketClient:
             logger.error(f"Unexpected error in listener: {e}")
 
     async def rpc_update_variable(self, params):
+        """
+        Handle the 'update_variable' JSON-RPC method from the server.
+
+        This method updates a specific field of a registered Variable instance
+        in response to a server notification. It uses the provided parameters
+        to identify the variable and the field to update.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "variable_id": The unique identifier of the Variable.
+                - "field": The field name to update.
+                - "value": The new value to set for the field.
+
+        Returns:
+            dict: A dictionary with a success message if the update is successful.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If the update fails for any reason.
+        """
         try:
             with suppress_variable_notifications():
                 update_local_variable_field(
                     params["variable_id"], params["field"], params["value"]
+                )
+                logger.info(
+                    f"Variable updated: variable_id={params['variable_id']!r} "
+                    f"field={params['field']!r} value={params['value']!r}"
                 )
                 return {"message": "Ok"}
         except KeyError as e:
@@ -282,19 +310,72 @@ class TellurioWebSocketClient:
                 f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
             )
 
-    # TODO: Finalize
     async def rpc_create_node(self, params):
-        # Implement your logic for handling create_node notifications/requests
-        logger.info(f"Received create_node: {params}")
-        # ... update local state as needed ...
-        return {"message": "Node created"}  # or whatever is appropriate
+        """
+        Handle the 'create_node' JSON-RPC method from the server.
 
-    # TODO: Finalize
+        This method creates and registers a new Node instance in the local registry
+        using the provided parameters. It is typically called when the server notifies
+        the client that a new node has been created in the computation graph.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "node_id": The unique identifier of the Node.
+                - "name": The class name or type of the Node.
+
+        Returns:
+            dict: A dictionary with a success message if the node is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+        """
+        try:
+            create_node(params)
+            logger.info(
+                f"Node created: node_id={params['node_id']!r} name={params['name']!r}"
+            )
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+
     async def rpc_create_edge(self, params):
-        # Implement your logic for handling create_edge notifications/requests
-        logger.info(f"Received create_edge: {params}")
-        # ... update local state as needed ...
-        return {"message": "Edge created"}  # or whatever is appropriate
+        """
+        Handle the 'create_edge' JSON-RPC method from the server.
+
+        This method creates a GradientEdge between two nodes in the local registry,
+        appending the edge to the from_node's next_functions. It is typically called
+        when the server notifies the client that a new edge has been created in the
+        computation graph.
+
+        Note:
+            The terms 'from_node' and 'to_node' should be interpreted in the context
+            of the backward pass (backpropagation): the edge is added to the
+            from_node's next_functions and points to the to_node, following the
+            direction of gradient flow during backpropagation.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "from_node_id": The unique identifier of the source node.
+                - "to_node_id": The unique identifier of the destination node.
+                - "output_nr": The output number associated with the edge.
+
+        Returns:
+            dict: A dictionary with a success message if the edge is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+        """
+        try:
+            create_and_append_edge(params)
+            logger.info(
+                f"Edge created: from_node_id={params['from_node_id']!r} "
+                f"to_node_id={params['to_node_id']!r} output_nr={params['output_nr']!r}"
+            )
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
 
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """

@@ -54,7 +54,6 @@ class Variable:
 
     _retain_grad: bool
     is_leaf: bool
-    variable_id: Optional[str]
     r"""All Variables that have :attr:`requires_grad` which is ``False`` will be leaf
     Variables by convention.
 
@@ -88,6 +87,7 @@ class Variable:
         True
         # e requires gradients and has no operations creating it
     """  # noqa: E501
+    variable_id: Optional[str]
 
     def __init__(
         self,

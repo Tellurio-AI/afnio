@@ -9,8 +9,10 @@ import pytest_asyncio
 
 import afnio as hf
 from afnio._variable import _allow_grad_fn_assignment
+from afnio.autodiff.graph import Node
 from afnio.tellurio import login
 from afnio.tellurio._eventloop import run_in_background_loop
+from afnio.tellurio._node_registry import register_node
 from afnio.tellurio.client import get_default_client
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
@@ -255,12 +257,12 @@ class TestServerToClientVariableSync:
     """
 
     @pytest.fixture
-    def mock_server_update_notification(self):
+    def mock_server_update_variable_request(self):
         """
         Fixture to simulate receiving an 'update_variable' RPC call from the server.
 
         Usage:
-            mock_server_update_notification(variable_id, field, value)
+            mock_server_update_variable_request(variable_id, field, value)
         """
 
         def _mock(variable_id, field, value):
@@ -345,14 +347,16 @@ class TestServerToClientVariableSync:
         ],
     )
     def test_set_field_triggers_notification(
-        self, variable, field, value, mock_server_update_notification
+        self, variable, field, value, mock_server_update_variable_request
     ):
         """
         Test that a server's update to a Variable's attribute
         is reflected in the client.
         """
         # Server sets the field to a new value
-        send_mock = mock_server_update_notification(variable.variable_id, field, value)
+        send_mock = mock_server_update_variable_request(
+            variable.variable_id, field, value
+        )
 
         # Assert that the variable was updated locally
         assert value == getattr(variable, field)
@@ -361,7 +365,7 @@ class TestServerToClientVariableSync:
         self.assert_valid_update_variable_response(send_mock)
 
     def test_multiple_set_field_notification_order(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that multiple server updates to a Variable's attribute
@@ -370,7 +374,7 @@ class TestServerToClientVariableSync:
         # Server sets the field to a new value
         changes = [10, 20, 30, 40, 50]
         for val in changes:
-            send_mock = mock_server_update_notification(
+            send_mock = mock_server_update_variable_request(
                 variable.variable_id, "data", val
             )
 
@@ -381,7 +385,7 @@ class TestServerToClientVariableSync:
             self.assert_valid_update_variable_response(send_mock)
 
     def test_requires_grad_method_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that the server calling `requires_grad_()` is reflected in the client.
@@ -394,7 +398,7 @@ class TestServerToClientVariableSync:
 
         # Server sets `_requires_grad` to False
         for field, value in updates:
-            send_mock = mock_server_update_notification(
+            send_mock = mock_server_update_variable_request(
                 variable.variable_id, field, value
             )
 
@@ -406,14 +410,14 @@ class TestServerToClientVariableSync:
             self.assert_valid_update_variable_response(send_mock)
 
     def test_set_output_nr_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that a server's update to a Variable's output_nr
         is reflected in the client.
         """
         # Server sets `_output_nr` to a new value
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "output_nr", 3
         )
 
@@ -423,26 +427,53 @@ class TestServerToClientVariableSync:
         # Assert that the client sends the correct response to the server
         self.assert_valid_update_variable_response(send_mock)
 
-    # TODO: Finalize after implementing NODE_REGISTRY
     def test_set_grad_fn_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that a server's update to a Variable's grad_fn is reflected in the client.
         """
+        # Register the node in the registry before sending the update
+        node_id = "node-id-123"
+        node = Node()
+        node._name = "AddBackward"
+        node.node_id = node_id
+        register_node(node)
+
         # Server sets `_grad_fn` to a new value
-        send_mock = mock_server_update_notification(
-            variable.variable_id, "_grad_fn", "test-id-456"
+        send_mock = mock_server_update_variable_request(
+            variable.variable_id, "_grad_fn", "node-id-123"
         )
 
         # Assert that the variable was updated locally
-        assert variable.grad_fn.name() == "AddBackward0"
+        assert variable.grad_fn is node
+        assert variable.grad_fn.name() == "AddBackward"
 
         # Assert that the client sends the correct response to the server
         self.assert_valid_update_variable_response(send_mock)
 
+    def test_set_grad_fn_raises_if_node_missing(
+        self, variable, mock_server_update_variable_request
+    ):
+        """
+        Test that updating _grad_fn with a non-existent node_id raises a ValueError.
+        """
+        non_existent_node_id = "not-in-registry"
+        send_mock = mock_server_update_variable_request(
+            variable.variable_id, "_grad_fn", non_existent_node_id
+        )
+        send_mock.assert_awaited()
+        sent_msg = send_mock.call_args[0][0]
+        response = json.loads(sent_msg)
+        assert "error" in response
+        assert response["error"]["message"] == "Internal error"
+        assert response["error"]["data"]["exception"] == (
+            f"Node with id 'not-in-registry' not found in registry "
+            f"when updating _grad_fn for variable '{variable.variable_id}'."
+        )
+
     def test_set_grad_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that a server's update to a Variable's grad is reflected in the client.
@@ -452,7 +483,7 @@ class TestServerToClientVariableSync:
             {"data": "gradient", "role": "grad_1", "requires_grad": False},
             {"data": "gradient", "role": "grad_2", "requires_grad": False},
         ]
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "_grad", value
         )
 
@@ -469,7 +500,7 @@ class TestServerToClientVariableSync:
         self.assert_valid_update_variable_response(send_mock)
 
     def test_append_grad_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that the server calling `append_grad()` is reflected in the client.
@@ -479,7 +510,7 @@ class TestServerToClientVariableSync:
         """
         # Server appends first gradient
         value = [{"data": "gradient", "role": "grad_1", "requires_grad": False}]
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "_grad", value
         )
 
@@ -497,7 +528,7 @@ class TestServerToClientVariableSync:
             {"data": "gradient", "role": "grad_1", "requires_grad": False},
             {"data": "gradient", "role": "grad_2", "requires_grad": False},
         ]
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "_grad", value
         )
 
@@ -514,7 +545,7 @@ class TestServerToClientVariableSync:
         self.assert_valid_update_variable_response(send_mock)
 
     def test_retain_grad_method_triggers_notification(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that the server calling `retain_grad()` is reflected in the client.
@@ -527,7 +558,7 @@ class TestServerToClientVariableSync:
         variable.is_leaf = False  # We force the variable to be non-leaf
 
         # Server call retain_grad() on a non-leaf variable
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "_retain_grad", True
         )
 
@@ -538,7 +569,7 @@ class TestServerToClientVariableSync:
         self.assert_valid_update_variable_response(send_mock)
 
     def test_copy_method_triggers_notifications(
-        self, variable, mock_server_update_notification
+        self, variable, mock_server_update_variable_request
     ):
         """
         Test that the server calling `copy_()` is reflected in the client.
@@ -549,11 +580,13 @@ class TestServerToClientVariableSync:
           - `requires_grad` is set to False
         """
         # Server calls `copy_()`` on a variable with new values
-        send_mock = mock_server_update_notification(variable.variable_id, "data", 123)
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
+            variable.variable_id, "data", 123
+        )
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "role", "copied"
         )
-        send_mock = mock_server_update_notification(
+        send_mock = mock_server_update_variable_request(
             variable.variable_id, "requires_grad", False
         )
 
@@ -564,3 +597,23 @@ class TestServerToClientVariableSync:
 
         # Assert that the client sends the correct response to the server
         self.assert_valid_update_variable_response(send_mock)
+
+    def test_update_variable_raises_if_variable_missing(
+        self, mock_server_update_variable_request
+    ):
+        """
+        Test that updating a variable that does not exist in the registry results
+        in an error response.
+        """
+        non_existent_variable_id = "not-in-registry"
+        send_mock = mock_server_update_variable_request(
+            non_existent_variable_id, "data", "new-value"
+        )
+        send_mock.assert_awaited()
+        sent_msg = send_mock.call_args[0][0]
+        response = json.loads(sent_msg)
+        assert "error" in response
+        assert response["error"]["message"] == "Internal error"
+        assert response["error"]["data"]["exception"] == (
+            "'NoneType' object has no attribute 'data'"
+        )

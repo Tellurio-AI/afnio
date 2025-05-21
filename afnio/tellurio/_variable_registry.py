@@ -1,5 +1,7 @@
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
+
+from afnio.tellurio._node_registry import get_node
 
 if TYPE_CHECKING:
     from afnio import Variable
@@ -28,7 +30,7 @@ def register_variable(var: "Variable"):
         VARIABLE_REGISTRY[var.variable_id] = var
 
 
-def get_variable(variable_id: str) -> "Variable":
+def get_variable(variable_id: str) -> Optional["Variable"]:
     """
     Retrieve a Variable instance from the registry by its variable_id.
 
@@ -64,7 +66,13 @@ def update_local_variable_field(variable_id: str, field: str, value):
         elif field == "_output_nr":
             var.output_nr = value
         elif field == "_grad_fn":
-            var._grad_fn = Node.from_serialized(value)
+            node = get_node(value)
+            if node is None:
+                raise ValueError(
+                    f"Node with id '{value}' not found in registry "
+                    f"when updating _grad_fn for variable '{variable_id}'."
+                )
+            var._grad_fn = node
         else:
             setattr(var, field, value)
     except RuntimeError:
