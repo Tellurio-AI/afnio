@@ -105,7 +105,7 @@ class TellurioWebSocketClient:
         headers = {"Authorization": f"Api-Key {self.api_key}"}
         for attempt in range(retries):
             try:
-                logger.info(
+                logger.debug(
                     f"Connecting to WebSocket at {self.ws_url} "
                     f"(attempt {attempt + 1}/{retries})"
                 )
@@ -115,7 +115,7 @@ class TellurioWebSocketClient:
 
                 # Start the listener task
                 self.listener_task = asyncio.create_task(self._listener())
-                logger.info("WebSocket connection established.")
+                logger.debug("WebSocket connection established.")
 
                 # Example: Retrieve session ID from the server
                 response = await self.connection.recv()
@@ -214,7 +214,7 @@ class TellurioWebSocketClient:
 
                     # Handle notifications (no id): do not send a response
                     if req_id is None:
-                        logger.info(
+                        logger.debug(
                             f"Received notification for method '{method}' "
                             f"with params: {data.get('params', {})}"
                         )
@@ -223,7 +223,7 @@ class TellurioWebSocketClient:
 
                     # Handle request (with id): execute RPC method and send response
                     params = data.get("params", {})
-                    logger.info(
+                    logger.debug(
                         f"RPC method call: method={method!r} "
                         f"params={params!r} id={req_id!r}"
                     )
@@ -236,7 +236,7 @@ class TellurioWebSocketClient:
                         "id": req_id,
                         "result": result,
                     }
-                    logger.info(
+                    logger.debug(
                         f"RPC method executed successfully: method={method!r} "
                         f"result={result!r} id={req_id!r}"
                     )
@@ -294,7 +294,7 @@ class TellurioWebSocketClient:
                 update_local_variable_field(
                     params["variable_id"], params["field"], params["value"]
                 )
-                logger.info(
+                logger.debug(
                     f"Variable updated: variable_id={params['variable_id']!r} "
                     f"field={params['field']!r} value={params['value']!r}"
                 )
@@ -331,7 +331,7 @@ class TellurioWebSocketClient:
         """
         try:
             create_node(params)
-            logger.info(
+            logger.debug(
                 f"Node created: node_id={params['node_id']!r} name={params['name']!r}"
             )
             return {"message": "Ok"}
@@ -368,7 +368,7 @@ class TellurioWebSocketClient:
         """
         try:
             create_and_append_edge(params)
-            logger.info(
+            logger.debug(
                 f"Edge created: from_node_id={params['from_node_id']!r} "
                 f"to_node_id={params['to_node_id']!r} output_nr={params['output_nr']!r}"
             )
@@ -440,26 +440,26 @@ class TellurioWebSocketClient:
         connection.
         """
         if self.listener_task:
-            logger.info("Canceling listener task...")
+            logger.debug("Canceling listener task...")
             self.listener_task.cancel()
             try:
                 await self.listener_task  # Wait for the listener task to finish
             except asyncio.CancelledError:
-                logger.info("Listener task canceled.")
+                logger.debug("Listener task canceled.")
                 pass  # Ignore cancellation errors
         self.listener_task = None  # Clean up the listener task
 
         if self.connection:
-            logger.info("Closing WebSocket connection...")
+            logger.debug("Closing WebSocket connection...")
             try:
                 await self.connection.close()
             finally:
                 self.connection = None
 
-        logger.info("Clearing pending requests...")
+        logger.debug("Clearing pending requests...")
         self._cancel_pending_requests()  # Clear pending requests
 
-        logger.info("WebSocket connection closed.")
+        logger.debug("WebSocket connection closed.")
 
     async def _send_error(
         self,
@@ -524,4 +524,4 @@ class TellurioWebSocketClient:
             if not future.done():
                 future.cancel()
         self.pending.clear()
-        logger.info("All pending requests have been canceled.")
+        logger.debug("All pending requests have been canceled.")

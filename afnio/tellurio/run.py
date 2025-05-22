@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -122,10 +123,14 @@ def init(
             project_slug=project_slug,
             client=client,
         )
-        logger.info(f"Project with slug '{project_slug}' already exists.")
+        logger.info(
+            f"Project with slug {project_slug!r} already exists "
+            f"in namespace {namespace_slug!r}."
+        )
     except Exception:
         logger.info(
-            f"Project with slug '{project_slug}' does not exist. "
+            f"Project with slug {project_slug!r} does not exist "
+            f"in namespace {namespace_slug!r}. "
             f"Creating it now with RESTRICTED visibility."
         )
         project_obj = create_project(
@@ -152,7 +157,14 @@ def init(
 
         if response.status_code == 201:
             data = response.json()
-            logger.info(f"Run created successfully: {data}")
+            base_url = os.getenv(
+                "TELLURIO_BACKEND_HTTP_BASE_URL", "https://platform.tellurio.ai"
+            )
+            run_slug = slugify(data["name"])
+            logger.info(
+                f"Run {data['name']!r} created successfully at: "
+                f"{base_url}/{namespace_slug}/projects/{project_slug}/runs/{run_slug}/"
+            )
 
             # Parse date fields
             date_created = datetime.fromisoformat(
