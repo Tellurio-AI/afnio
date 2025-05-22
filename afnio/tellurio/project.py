@@ -71,7 +71,7 @@ def get_project(
 
         if response.status_code == 200:
             data = response.json()
-            logger.info(f"Project retrieved successfully: {data}")
+            logger.debug(f"Project retrieved successfully: {data}")
 
             # Parse date fields
             date_created = datetime.fromisoformat(
@@ -140,7 +140,7 @@ def create_project(
 
         if response.status_code == 201:
             data = response.json()
-            logger.info(f"Project created successfully: {data}")
+            logger.debug(f"Project created successfully: {data}")
 
             # Parse date fields
             date_created = datetime.fromisoformat(
@@ -202,7 +202,7 @@ def delete_project(
         response = client.delete(endpoint)
 
         if response.status_code == 204:
-            logger.info(f"Project '{project_slug}' deleted successfully.")
+            logger.debug(f"Project '{project_slug}' deleted successfully.")
         else:
             logger.error(
                 f"Failed to delete project: {response.status_code} - {response.text}"

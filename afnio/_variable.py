@@ -149,7 +149,7 @@ class Variable:
             response = run_in_background_loop(
                 ws_client.call("create_variable", payload)
             )
-            logger.info(f"Variable created and shared with the server: {self!r}")
+            logger.debug(f"Variable created and shared with the server: {self!r}")
             variable_id = response["result"].get("variable_id")
             if not variable_id:
                 logger.error(
@@ -633,7 +633,7 @@ class Variable:
                     "Failed to notify server of variable change: "
                     "server response does not match the update sent."
                 )
-            logger.info(
+            logger.debug(
                 f"Variable change notified to server and confirmed: "
                 f"variable_id={self.variable_id!r}, field='{field}', value={end_value!r}"  # noqa: E501
             )

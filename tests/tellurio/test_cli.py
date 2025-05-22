@@ -31,8 +31,8 @@ async def test_login_success(setup_keyring):
     runner = CliRunner()
     result = runner.invoke(cli, ["login"], input=f"{api_key}\n")
     assert result.exit_code == 0
-    assert "Login successful!" in result.output
-    assert "Your API key has been securely saved" in result.output
+    assert f"Currently logged in as {username!r}" in result.output
+    assert "API key provided and stored securely in local keyring." in result.output
 
     # Verify the API key is stored in the in-memory keyring
     stored_api_key = setup_keyring.get_password(service, username)
@@ -49,7 +49,7 @@ def test_login_invalid_api_key(setup_keyring):
     runner = CliRunner()
     result = runner.invoke(cli, ["login"], input="invalid_api_key\n")
     assert result.exit_code == 0
-    assert "Login failed: Login failed due to invalid API key." in result.output
+    assert "Login failed: Invalid API key. Please try again." in result.output
 
     # Verify the invalid API key is not stored in the in-memory keyring
     stored_api_key = setup_keyring.get_password(service, username)
@@ -71,8 +71,8 @@ def test_login_relogin(setup_keyring):
     runner = CliRunner()
     result = runner.invoke(cli, ["login", "--relogin"], input=f"{api_key}\n")
     assert result.exit_code == 0
-    assert "Your API key has been securely saved" in result.output
-    assert "Login successful!" in result.output
+    assert "API key provided and stored securely in local keyring." in result.output
+    assert f"Currently logged in as {username!r}" in result.output
 
     # Verify the new API key is stored in the in-memory keyring
     stored_api_key = setup_keyring.get_password(service, username)

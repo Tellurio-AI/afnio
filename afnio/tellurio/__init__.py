@@ -1,5 +1,6 @@
 import atexit
 import logging
+import os
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import _event_loop_thread, run_in_background_loop
@@ -61,13 +62,24 @@ def login(api_key: str = None, relogin=False):
         try:
             # Perform HTTP login
             login_info = client.login(api_key=api_key, relogin=relogin)
-            logger.info(f"HTTP login successful for user '{login_info['username']}'.")
+            logger.debug(f"HTTP login successful for user '{login_info['username']}'.")
 
             # Perform WebSocket login
             ws_info = await ws_client.connect(api_key=client.api_key)
-            logger.info(
+            logger.debug(
                 f"WebSocket connection established "
                 f"with session ID '{ws_info['session_id']}'."
+            )
+
+            base_url = os.getenv(
+                "TELLURIO_BACKEND_HTTP_BASE_URL", "https://platform.tellurio.ai"
+            )
+            logger.info(
+                "Currently logged in as %r to %r. "
+                "Use `afnio login --relogin` to force relogin.",
+                login_info["username"],
+                base_url,
+                extra={"colors": {0: "yellow", 1: "green"}},
             )
 
             return {
@@ -124,7 +136,7 @@ def _shutdown():
 atexit.register(_shutdown)
 
 
-__all__ = ["init", "login"]
+__all__ = ["configure_logging", "init", "login"]
 
 # Please keep this list sorted
 assert __all__ == sorted(__all__)

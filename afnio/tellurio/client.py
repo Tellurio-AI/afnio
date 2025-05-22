@@ -42,7 +42,11 @@ def load_username():
     """
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r") as f:
-            return json.load(f).get("username")
+            try:
+                return json.load(f).get("username")
+            except json.JSONDecodeError:
+                logger.debug("Failed to decode JSON from the configuration file.")
+                return None
     return None
 
 
@@ -107,29 +111,33 @@ class TellurioClient:
         # Use the provided API key if passed, otherwise check for stored key
         if api_key:
             self.api_key = api_key
-            logger.info("API key provided and stored securely.")
         elif not relogin:
             username = load_username()
             self.api_key = keyring.get_password(self.service_name, username)
             if self.api_key:
-                logger.info("Using stored API key from keyring.")
+                logger.info("Using stored API key from local keyring.")
             else:
+                logger.error("No API key found in local keyring.")
                 raise ValueError("API key is required for the first login.")
         else:
+            logger.error("No API key provided for re-login.")
             raise ValueError("API key is required for re-login.")
 
         # Verify the API key
         response_data = self._verify_api_key()
         if response_data:
-            # Save the API key securely only if it's valid
-            keyring.set_password(
-                self.service_name, response_data["username"], self.api_key
-            )
-            save_username(response_data["username"])
-
             email = response_data.get("email", "unknown user")
             username = response_data.get("username", "unknown user")
-            logger.info(f"API key is valid for user '{username}'.")
+            logger.debug(f"API key is valid for user '{username}'.")
+
+            # Save the API key securely only if it was provided and is valid
+            if api_key:
+                keyring.set_password(
+                    self.service_name, response_data["username"], self.api_key
+                )
+                logger.info("API key provided and stored securely in local keyring.")
+                save_username(response_data["username"])
+
             return {
                 "email": email,
                 "username": username,
@@ -238,7 +246,7 @@ class TellurioClient:
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    logger.info(f"API key verification successful: {data}")
+                    logger.debug(f"API key verification successful: {data}")
                     return data
                 except ValueError:
                     logger.error("Failed to parse JSON response from backend.")
