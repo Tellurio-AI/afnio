@@ -25,11 +25,29 @@ _default_ws_client = None
 def save_username(username):
     """
     Saves the username to a JSON configuration file.
-    This function creates a JSON file at the specified path and stores the username
-    in it. If the file already exists, it will be overwritten.
+    If the username is different from the one already stored, this function
+    updates the 'username' field and clears all other preferences.
+    Otherwise, it preserves all existing values.
     """
-    with open(get_config_path(), "w") as f:
-        json.dump({"username": username}, f)
+    config_path = get_config_path()
+    # Load existing config if present, otherwise start with empty dict
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            try:
+                config = json.load(f)
+            except json.JSONDecodeError:
+                config = {}
+    else:
+        config = {}
+
+    # If username is different, clear all preferences except username
+    if config.get("username") != username:
+        config = {"username": username}
+    else:
+        config["username"] = username
+
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def load_username():
