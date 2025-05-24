@@ -43,15 +43,15 @@ def check_consent():
     if _is_interactive():
         print(
             f"\n{YELLOW}========== [Consent Required] =========={RESET}\n"
-            "Your LM model API key will be sent to the Tellurio server for remote model execution and backpropagation.\n"
+            "Your LM model API key will be sent to the Tellurio server for remote model execution and backpropagation.\n"  # noqa: E501
             "\n"
             "Please review the following:\n"
             "  • Tellurio will never use your key except to execute your requests.\n"
             "  • The key is only used during your session.\n"
-            "  • The key is never stored and is removed from memory when your session ends.\n"
+            "  • The key is never stored and is removed from memory when your session ends.\n"  # noqa: E501
             "\n"
             "Do you consent to share your API key with the server?\n"
-            "Type 'yes' to allow just this time, or 'always' to allow and remember your choice for all future sessions.",
+            "Type 'yes' to allow just this time, or 'always' to allow and remember your choice for all future sessions.",  # noqa: E501
             flush=True,
         )
         consent = input("Consent [yes/always/no]: ").strip().lower()
