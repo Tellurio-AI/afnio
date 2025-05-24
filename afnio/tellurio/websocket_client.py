@@ -9,6 +9,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._model_registry import update_local_model_field
 from afnio.tellurio._node_registry import (
     create_and_append_edge,
     create_node,
@@ -376,6 +377,47 @@ class TellurioWebSocketClient:
         except KeyError as e:
             logger.error(f"Missing key in params: {e}")
             raise KeyError(f"Missing key: {e}")
+
+    async def rpc_update_model(self, params):
+        """
+        Handle the 'update_model' JSON-RPC method from the server.
+
+        This method updates a specific field of a registered LM model instance
+        in response to a server notification. It uses the provided parameters
+        to identify the LM model and the field to update.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "model_id": The unique identifier of the LM model.
+                - "field": The field name to update.
+                - "value": The new value to set for the field.
+
+        Returns:
+            dict: A dictionary with a success message if the update is successful.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If the update fails for any reason.
+        """
+        try:
+            update_local_model_field(
+                params["model_id"], params["field"], params["value"]
+            )
+            logger.debug(
+                f"Model updated: model_id={params['model_id']!r} "
+                f"field={params['field']!r} value={params['value']!r}"
+            )
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to update model with ID {params.get('model_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to update model with ID {params.get('model_id')!r}: {e}"
+            )
 
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """

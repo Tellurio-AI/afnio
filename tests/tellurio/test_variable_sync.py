@@ -13,12 +13,16 @@ from afnio.autodiff.graph import Node
 from afnio.tellurio import login
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._node_registry import register_node
+from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
 from afnio.tellurio.client import get_default_client
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 
 @pytest.fixture
 def variable():
+    """
+    Fixture to create a Variable instance.
+    """
     var = hf.Variable(data="Tellurio", role="input variable", requires_grad=True)
 
     # Assert initial state of the variable
@@ -70,6 +74,8 @@ class TestClientToServerVariableSync:
         Test that creating a Variable triggers a notification to the server.
         """
         assert variable.variable_id is not None
+        assert variable.variable_id in VARIABLE_REGISTRY
+        assert VARIABLE_REGISTRY[variable.variable_id] is variable
 
     @pytest.mark.parametrize(
         "field,value",
@@ -266,8 +272,8 @@ class TestServerToClientVariableSync:
         """
 
         def _mock(variable_id, field, value):
-            _, ws_client = get_default_client()
 
+            # Compose the JSON-RPC message
             message = json.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -281,6 +287,7 @@ class TestServerToClientVariableSync:
                 }
             )
 
+            # Patch the connection to use a fake async send
             class FakeConnection:
                 def __init__(self):
                     self.sent_messages = []

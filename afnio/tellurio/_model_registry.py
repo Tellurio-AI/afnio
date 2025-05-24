@@ -32,3 +32,14 @@ def get_model(model_id: str) -> Optional["BaseModel"]:
         BaseModel: The model instance if found, else None.
     """
     return MODEL_REGISTRY.get(model_id)
+
+
+def update_local_model_field(model_id: str, field: str, value):
+    """
+    Update a specific field of a registered Model instance as a consequence of a
+    notification from the server.
+    """
+    model = get_model(model_id)
+    if model is None:
+        raise RuntimeError(f"Model with id '{model_id}' not found in registry.")
+    setattr(model, field, value)
