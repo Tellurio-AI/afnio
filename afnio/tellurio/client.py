@@ -7,10 +7,8 @@ import keyring
 from dotenv import load_dotenv
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio.utils import get_config_path
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
-
-# Path to the configuration file
-CONFIG_PATH = os.path.expanduser("~/.tellurio_config.json")
 
 # Configure logging
 configure_logging()
@@ -30,7 +28,7 @@ def save_username(username):
     This function creates a JSON file at the specified path and stores the username
     in it. If the file already exists, it will be overwritten.
     """
-    with open(CONFIG_PATH, "w") as f:
+    with open(get_config_path(), "w") as f:
         json.dump({"username": username}, f)
 
 
@@ -40,8 +38,9 @@ def load_username():
     This function reads the JSON file at the specified path and retrieves the username
     stored in it. If the file does not exist, it returns None.
     """
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r") as f:
+    config_path = get_config_path()
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
             try:
                 return json.load(f).get("username")
             except json.JSONDecodeError:
