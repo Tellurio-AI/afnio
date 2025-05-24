@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 
-from afnio.tellurio import client as tellurio_client_module
+from afnio.tellurio import utils as tellurio_utils
 from afnio.tellurio._eventloop import _event_loop_thread
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import Project, create_project, delete_project
@@ -24,8 +24,9 @@ def patch_config_path(monkeypatch):
     # Create a temporary file for the config
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         dummy_config_path = tmp.name
-    # Patch the CONFIG_PATH in the tellurio_client_module
-    monkeypatch.setattr(tellurio_client_module, "CONFIG_PATH", dummy_config_path)
+
+    # Patch get_config_path to always return the dummy path
+    monkeypatch.setattr(tellurio_utils, "get_config_path", lambda: dummy_config_path)
     yield
     # Clean up the file after the test
     if os.path.exists(dummy_config_path):
