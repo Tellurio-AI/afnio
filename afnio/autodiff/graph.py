@@ -7,8 +7,11 @@ class Node:
         self._name = None
         self.node_id = None
 
+    def __repr__(self):
+        return f"<afnio.autodiff.function.{self.name()} object at {hex(id(self))}>"
+
     def __str__(self):
-        return f"<{self.__class__.__name__} object at {hex(id(self))}>"
+        return f"<{self.name()} object at {hex(id(self))}>"
 
     def apply(self, *args):
         raise NotImplementedError("Subclasses should implement this method.")
@@ -49,7 +52,17 @@ class GradientEdge(NamedTuple):
     output_nr: int
 
     def __repr__(self):
-        return f"(<{self.node.__class__.__name__} object at {hex(id(self.node))}>, {self.output_nr})"  # noqa: E501
+        name = (
+            f"<{self.node.name()} object at {hex(id(self.node))}>"
+            if self.node
+            else "None"
+        )
+        return f"({name}, {self.output_nr})"
 
     def __str__(self):
-        return f"(<{self.node.__class__.__name__} object at {hex(id(self.node))}>, {self.output_nr})"  # noqa: E501
+        name = (
+            f"<{self.node.name()} object at {hex(id(self.node))}>"
+            if self.node
+            else "None"
+        )
+        return f"({name}, {self.output_nr})"
