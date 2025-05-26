@@ -23,7 +23,7 @@ async def login_fixture():
     api_key = api_key
 
 
-class TestBackwardModelClient:
+class TestBackwardModelClientSync:
 
     def test_set_and_get_backward_model_client(self):
         """
