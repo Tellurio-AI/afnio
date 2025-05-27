@@ -162,7 +162,7 @@ class Variable:
                         f"for payload: {payload!r}, response: {response!r}"
                     )
                     raise RuntimeError(
-                        "Failed to create Variable: server did not return a variable_id."
+                        "Failed to create Variable: server did not return a variable_id."  # noqa: E501
                     )
                 self.variable_id = variable_id
                 self._initialized = True
