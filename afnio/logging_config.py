@@ -54,6 +54,7 @@ def in_notebook():
         return False
 
 
+# TODO: Fix notebook behaviour, that prints logs in the wrong cell when exception occours
 def configure_logging(verbosity: str = "info"):
     """
     Configure logging for the afnio library.
@@ -87,6 +88,7 @@ def configure_logging(verbosity: str = "info"):
     if in_notebook() and level == logging.INFO:
         handler = NotebookInfoHandler()
         handler.setLevel(logging.INFO)
+        handler.addFilter(lambda record: record.levelno == logging.INFO)
         logging.getLogger().addHandler(handler)
 
         class NoInfoFilter(logging.Filter):
