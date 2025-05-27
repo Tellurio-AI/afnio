@@ -19,6 +19,15 @@ _SUPPRESS_NOTIFICATIONS = False
 VARIABLE_REGISTRY: Dict[str, "Variable"] = {}
 
 
+# PENDING_GRAD_FN_ASSIGNMENTS is a mapping from grad_fn node_id (str) to a list of
+# Variable instances that are waiting for their grad_fn node to be registered.
+# When deserializing a Function's output Variabe, if its grad_fn node is not yet
+# available in the node registry, the Variable is added to this mapping. After the node
+# is registered, all Variables in the list for that node_id will have their grad_fn
+# set accordingly.
+PENDING_GRAD_FN_ASSIGNMENTS: Dict[str, list] = {}
+
+
 def register_variable(var: "Variable"):
     """
     Register a Variable instance in the local registry.

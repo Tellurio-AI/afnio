@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
@@ -88,6 +89,8 @@ class Variable:
         # e requires gradients and has no operations creating it
     """  # noqa: E501
     variable_id: Optional[str]
+    _initialized: bool
+    _pending_grad_fn_id: Optional[str]
 
     def __init__(
         self,
@@ -123,6 +126,10 @@ class Variable:
             if isinstance(data, tuple):
                 data = list(data)
 
+        # Websocket attributes
+        self.variable_id = None
+        self._initialized = False  # Falgs variable is ready to send websocket updates
+        self._pending_grad_fn_id = None  # Flagsvariable has a pending grad_fn to be set
         # Internal attributes
         self.data = data
         self.role = role
@@ -132,39 +139,37 @@ class Variable:
         self._output_nr = 0
         self._grad_fn = None
         self.is_leaf = not requires_grad or self.grad_fn is None
-        # Websocket attributes
-        self.variable_id = None
-        self._initialized = False  # Falgs variable is ready to send websocket updates
 
         # Share the variable with the websocket server
-        try:
-            # Get the singleton websocket client
-            _, ws_client = get_default_client()
+        if not is_variable_notify_suppressed():
+            try:
+                # Get the singleton websocket client
+                _, ws_client = get_default_client()
 
-            payload = {
-                "data": self.data,
-                "role": self.role,
-                "requires_grad": self.requires_grad,
-            }
-            response = run_in_background_loop(
-                ws_client.call("create_variable", payload)
-            )
-            logger.debug(f"Variable created and shared with the server: {self!r}")
-            variable_id = response["result"].get("variable_id")
-            if not variable_id:
-                logger.error(
-                    f"Server did not return a variable_id "
-                    f"for payload: {payload!r}, response: {response!r}"
+                payload = {
+                    "data": self.data,
+                    "role": self.role,
+                    "requires_grad": self.requires_grad,
+                }
+                response = run_in_background_loop(
+                    ws_client.call("create_variable", payload)
                 )
-                raise RuntimeError(
-                    "Failed to create Variable: server did not return a variable_id."
-                )
-            self.variable_id = variable_id
-            self._initialized = True
-            register_variable(self)
-        except Exception as e:
-            logger.error(f"Failed to share Variable with the server: {e}")
-            raise
+                logger.debug(f"Variable created and shared with the server: {self!r}")
+                variable_id = response.get("result", {}).get("variable_id")
+                if not variable_id:
+                    logger.error(
+                        f"Server did not return a variable_id "
+                        f"for payload: {payload!r}, response: {response!r}"
+                    )
+                    raise RuntimeError(
+                        "Failed to create Variable: server did not return a variable_id."
+                    )
+                self.variable_id = variable_id
+                self._initialized = True
+                register_variable(self)
+            except Exception as e:
+                logger.error(f"Failed to share Variable with the server: {e}")
+                raise
 
     # TODO: pretty print data lists
     def __repr__(self):
@@ -327,6 +332,21 @@ class Variable:
 
     @property
     def grad_fn(self) -> Optional["Node"]:
+        if self._pending_grad_fn_id is not None:
+            TIMEOUT = 3  # seconds
+            INTERVAL = 0.01  # seconds
+            waited = 0.0
+
+            # Wait for the grad_fn to be returned by the server
+            while self._pending_grad_fn_id is not None and waited < TIMEOUT:
+                time.sleep(INTERVAL)
+                waited += INTERVAL
+            if self._pending_grad_fn_id is not None:
+                raise RuntimeError(
+                    f"Timeout waiting for grad_fn node "
+                    f"for variable_id={self.variable_id} "
+                    f"(waiting for node_id={self._pending_grad_fn_id})"
+                )
         return self._grad_fn
 
     @grad_fn.setter
@@ -416,24 +436,6 @@ class Variable:
             self._retain_grad = True
         else:
             raise RuntimeError("Cannot call retain_grad on a leaf variable")
-
-    def view_as_accumulator(self) -> "Variable":
-        """
-        Creates a new view of this variable to see it as a gradient accumulator.
-
-        This new view shares the same data with the original variable but
-        allows setting a `grad_fn` for gradient tracking.
-        """
-        from afnio.autodiff.function import AccumulateGrad
-
-        view = Variable(
-            data=self.data, role=self.role, requires_grad=self.requires_grad
-        )
-        with _allow_grad_fn_assignment():
-            view.grad_fn = self.grad_fn if not self.is_leaf else AccumulateGrad(self)
-
-        view.is_leaf = not view.requires_grad or view.grad_fn is None
-        return view
 
     def detach(self) -> "Variable":
         """

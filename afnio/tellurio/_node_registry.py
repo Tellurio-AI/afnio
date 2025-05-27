@@ -42,10 +42,24 @@ def create_node(data: dict) -> Node:
     Returns:
         Node: The created and registered Node instance.
     """
+    from afnio._variable import _allow_grad_fn_assignment
+    from afnio.tellurio._variable_registry import (
+        PENDING_GRAD_FN_ASSIGNMENTS,
+        suppress_variable_notifications,
+    )
+
     node = Node()
     node._name = data["name"]
     node.node_id = data["node_id"]
     register_node(node)
+
+    # After registering, resolve any pending grad_fn assignments
+    pending_vars = PENDING_GRAD_FN_ASSIGNMENTS.pop(node.node_id, [])
+    for var in pending_vars:
+        with suppress_variable_notifications(), _allow_grad_fn_assignment():
+            var._pending_grad_fn_id = None
+            var.grad_fn = node
+
     return node
 
 
@@ -73,8 +87,9 @@ def create_and_append_edge(data: dict) -> GradientEdge:
 
     if not from_node:
         raise ValueError(f"from_node with id '{from_node_id}' not found in registry.")
-    if not to_node:
+    if to_node_id is not None and to_node is None:
         raise ValueError(f"to_node with id '{to_node_id}' not found in registry.")
+    # If to_node_id=None, to_node=None (leaf Variable that doesn't require gradient)
 
     edge = GradientEdge(node=to_node, output_nr=output_nr)
     from_node.next_functions = from_node.next_functions + (edge,)

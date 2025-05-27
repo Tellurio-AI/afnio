@@ -86,6 +86,10 @@ class TestServerToClientNodeSync:
         assert response["result"]["message"] == "Ok"
 
     def test_create_node_registers_node(self, mock_server_rpc):
+        """
+        Test that creating a node via RPC registers it in the NODE_REGISTRY
+        and sends a valid response back to the server.
+        """
         # Clear registry for test isolation
         NODE_REGISTRY.clear()
         node_id = str(uuid.uuid4())
@@ -102,6 +106,10 @@ class TestServerToClientNodeSync:
         self.assert_valid_rpc_response(send_mock)
 
     def test_create_edge_registers_edge(self, mock_server_rpc):
+        """
+        Test that creating an edge via RPC registers it in the from_node's
+        next_functions and sends a valid response back to the server.
+        """
         # Clear registry for test isolation
         NODE_REGISTRY.clear()
         # Create two nodes first
@@ -125,6 +133,34 @@ class TestServerToClientNodeSync:
         assert len(node1.next_functions) == 1
         edge = node1.next_functions[0]
         assert edge.node is node2
+        assert edge.output_nr == 0
+
+        # Assert correct response sent
+        self.assert_valid_rpc_response(send_mock)
+
+    def test_create_edge_allows_to_node_id_none(self, mock_server_rpc):
+        """
+        Test that creating an edge with to_node_id=None is allowed
+        (e.g., for leaf nodes).
+        """
+        NODE_REGISTRY.clear()
+        node_id_1 = str(uuid.uuid4())
+        # Register only from_node
+        mock_server_rpc("create_node", {"node_id": node_id_1, "name": "AddBackward"})
+
+        params = {
+            "from_node_id": node_id_1,
+            "to_node_id": None,
+            "output_nr": 0,
+        }
+        send_mock = mock_server_rpc("create_edge", params)
+
+        # Assert edge is registered in node1.next_functions
+        node1 = get_node(node_id_1)
+        assert node1 is not None
+        assert len(node1.next_functions) == 1
+        edge = node1.next_functions[0]
+        assert edge.node is None
         assert edge.output_nr == 0
 
         # Assert correct response sent
