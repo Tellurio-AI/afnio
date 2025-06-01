@@ -9,6 +9,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._callable_registry import run_callable
 from afnio.tellurio._model_registry import update_local_model_field
 from afnio.tellurio._node_registry import (
     create_and_append_edge,
@@ -419,6 +420,77 @@ class TellurioWebSocketClient:
                 f"Failed to update model with ID {params.get('model_id')!r}: {e}"
             )
 
+    async def rpc_run_callable(self, params):
+        """
+        Handle the 'run_callable' JSON-RPC method from the server.
+
+        This method is invoked when the server sends a JSON-RPC request with the
+        method "run_callable". It extracts callable details from the provided
+        parameters, executes the callable from the registry, and returns a response
+        containing the result. The response is expected to be JSON-serializable.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "callable_id": A unique identifier for the callable.
+                - "args": Positional arguments (as a list or tuple) for the callable.
+                - "kwargs": Keyword arguments for the callable.
+
+        Returns:
+            dict: A dictionary with the following structure:
+                {
+                    "message": "Ok",
+                    "data": <result of executing the callable>
+                }
+
+        Raises:
+            KeyError: If required keys are missing in params.
+            TypeError: If the result of the callable is not JSON-serializable.
+            ValueError: If the callable execution fails due to invalid parameters.
+            RuntimeError: For any other exception encountered during callable execution.
+        """
+        try:
+            result = run_callable(params)
+
+            # Check if result is JSON serializable
+            try:
+                json.dumps(result)
+            except (TypeError, ValueError) as e:
+                logger.error(
+                    f"Result of callable with ID {params.get('callable_id')!r} "
+                    f"is not JSON-serializable: {result!r} ({e})"
+                )
+                raise TypeError(
+                    f"Result of callable with ID {params.get('callable_id')!r} "
+                    f"is not JSON-serializable: {result!r} ({e})"
+                )
+
+            logger.debug(
+                f"Callable executed successfully: "
+                f"callable_id={params['callable_id']!r}, "
+                f"args={params.get('args', {})!r}, "
+                f"kwargs={params.get('kwargs', {})!r}"
+            )
+            return {"message": "Ok", "data": result}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except ValueError as e:
+            logger.error(
+                f"Failed to run callable with ID {params.get('callable_id')!r}: {e}"
+            )
+            raise ValueError(
+                f"Failed to run callable with ID {params.get('callable_id')!r}: {e}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Exception during execution of callable "
+                f"with ID {params.get('callable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Exception during execution of callable "
+                f"with ID {params.get('callable_id')!r}: {e}"
+            )
+
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """
         Sends a request over the WebSocket connection and waits for a response.
@@ -464,7 +536,7 @@ class TellurioWebSocketClient:
             return None
 
         # Wait for response
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         self.pending[req_id] = future
         try:
             return await asyncio.wait_for(future, timeout=timeout)
@@ -481,6 +553,9 @@ class TellurioWebSocketClient:
         Cancels the listener task, clears pending requests, and closes the WebSocket
         connection.
         """
+        # Add a delay to allow receiving and replying to remaining server requests
+        await asyncio.sleep(1)
+
         if self.listener_task:
             logger.debug("Canceling listener task...")
             self.listener_task.cancel()

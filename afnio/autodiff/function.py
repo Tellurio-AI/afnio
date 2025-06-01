@@ -1,9 +1,11 @@
 import logging
+import uuid
 from typing import Any, Tuple
 
 from afnio._variable import Variable, _allow_grad_fn_assignment
 from afnio.logging_config import configure_logging
 from afnio.models import ChatCompletionModel
+from afnio.tellurio._callable_registry import register_callable
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._node_registry import get_node
 from afnio.tellurio._variable_registry import (
@@ -192,6 +194,8 @@ def _serialize_arg(arg: Any) -> Any:
     Handles:
     - Variable: serializes as a dict with a type tag and variable_id.
     - ChatCompletionModel: serializes as a dict with a type tag and model_id.
+    - Callable: registers the callable and serializes as a dict with a type tag
+      and callable_id.
     - list/tuple: recursively serializes each element.
     - dict: recursively serializes each value.
     - Primitives (str, int, float, bool, None): returned as-is.
@@ -208,17 +212,14 @@ def _serialize_arg(arg: Any) -> Any:
             "__model_client__": True,
             "model_id": arg.model_id,
         }
-    # TODO: Callables can be either serialized and run in a SandBox on the server,
-    #       or Function.forward() can be partially executed locally so that Callables
-    #       are only run locally and don't have to be shared with the server
-    # elif callable(arg):
-    #     # Only allow whitelisted functions by name
-    #     for name, fn in ALLOWED_FUNCTIONS.items():
-    #         if arg is fn:
-    #             return {"__callable__": True, "name": name}
-    #     raise ValueError(
-    #         f"Cannot serialize callable {arg}. Only whitelisted functions are allowed."
-    #     )
+    elif callable(arg):
+        # Register the callable and generate a unique ID
+        callable_id = str(uuid.uuid4())
+        register_callable(callable_id, arg)
+        return {
+            "__callable__": True,
+            "callable_id": callable_id,
+        }
     elif isinstance(arg, list):
         return [_serialize_arg(a) for a in arg]
     elif isinstance(arg, tuple):
