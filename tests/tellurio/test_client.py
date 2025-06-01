@@ -4,11 +4,11 @@ import os
 import pytest
 from keyring import set_keyring
 
-from afnio.tellurio import client as tellurio_client_module
 from afnio.tellurio.client import (
     InvalidAPIKeyError,
     TellurioClient,
 )
+from afnio.tellurio.utils import get_config_path
 from tests.utils import InMemoryKeyring
 
 
@@ -69,7 +69,7 @@ class TestTellurioClient:
         self.test_keyring.set_password(service, username, api_key)
 
         # Write the username to the dummy config file
-        with open(tellurio_client_module.CONFIG_PATH, "w") as f:
+        with open(get_config_path(), "w") as f:
             json.dump({"username": username}, f)
 
         # Use the temporary path for testing
