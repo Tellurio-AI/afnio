@@ -6,6 +6,7 @@ import pytest_asyncio
 
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split
+from afnio.autodiff.evaluator import DeterministicEvaluator
 from afnio.autodiff.function import _deserialize_output, _serialize_arg
 from afnio.models.openai import OpenAI
 from afnio.tellurio import login
@@ -35,7 +36,7 @@ class TestFunctionSync:
 
     def test_add_apply(self, variables):
         """
-        Test the Add function's apply method with two variables.
+        Test the Add function's apply method with two Variable inputs.
         """
         x, y = variables
         result = Add.apply(x, y)
@@ -53,7 +54,7 @@ class TestFunctionSync:
 
     def test_split_apply(self, variables):
         """
-        Test the Split function's apply method with a variable.
+        Test the Split function's apply method with single Variable input.
         """
         x, _ = variables
         x.data = "a b c"
@@ -70,6 +71,47 @@ class TestFunctionSync:
             assert len(v.grad_fn.next_functions) == 1
             assert "<AccumulateGrad" in str(v.grad_fn.next_functions[0].node)
             assert v.grad_fn.next_functions[0].output_nr == 0
+
+    def test_deterministic_evaluator_apply(self, variables):
+        """
+        Test the DeterministicEvaluator function's apply method with Callable input.
+        """
+
+        def exact_match_fn(pred: str, tgt: str) -> int:
+            return 1 if pred == tgt else 0
+
+        fn_purpose = "exact match"
+        prediction = Variable(data="green", role="color prediction", requires_grad=True)
+        target = Variable(data="red", role="expected color")
+        result = DeterministicEvaluator.apply(
+            prediction, target, exact_match_fn, fn_purpose, None, None, None
+        )
+        score, explanation = result
+        assert isinstance(result, tuple)
+        assert isinstance(score, Variable)
+        assert isinstance(explanation, Variable)
+
+        # Check score and explanation attributes
+        assert score.data == 0
+        assert score.role == "Evaluation result score of color prediction"
+        assert score.requires_grad is True
+        assert explanation.data == (
+            "The evaluation function, designed for 'exact match', "
+            "compared the <DATA> field of the predicted variable ('green') with "
+            "the <DATA> field of the target variable ('red'), "
+            "resulting in a score: 0."
+        )
+        assert explanation.role == "Evaluation result explanation of color prediction"
+        assert explanation.requires_grad is True
+
+        # Check grad_fn for score and explanation
+        for var in (score, explanation):
+            assert "<DeterministicEvaluatorBackward" in str(var.grad_fn)
+            assert len(var.grad_fn.next_functions) == 2
+            assert "<AccumulateGrad" in str(var.grad_fn.next_functions[0].node)
+            assert var.grad_fn.next_functions[0].output_nr == 0
+            assert "None" in str(var.grad_fn.next_functions[1].node)
+            assert var.grad_fn.next_functions[1].output_nr == 0
 
 
 class TestSerializeArg:
@@ -88,10 +130,14 @@ class TestSerializeArg:
         assert serialized["__variable__"] is True
         assert serialized["variable_id"] == x.variable_id
 
-    def test_serialize_arg_model_client(self):
+    def test_serialize_arg_model_client(self, monkeypatch):
         """
         Test serialization of an LM model client.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+        # Create OpenAI model client
         model = OpenAI(api_key="test_key")
         serialized = _serialize_arg(model)
         assert isinstance(serialized, dict)

@@ -18,8 +18,6 @@ def register_node(node: Node):
 
 
 def get_node(node_id: str) -> Optional[Node]:
-    """Retrieve a Node instance by its node_id."""
-
     """
     Retrieve a Node instance from the registry by its node_id.
 

@@ -3,13 +3,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from afnio._utils import MultiTurnMessages
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split, Sum
-
-# from afnio.autodiff.evaluator import (
-#     DeterministicEvaluator,
-#     ExactMatchEvaluator,
-#     LMJudgeEvaluator,
-# )
-# from afnio.autodiff.lm_ops import ChatCompletion
+from afnio.autodiff.evaluator import (
+    DeterministicEvaluator,
+    ExactMatchEvaluator,
+    LMJudgeEvaluator,
+)
+from afnio.autodiff.lm_ops import ChatCompletion
 from afnio.models import ChatCompletionModel
 
 

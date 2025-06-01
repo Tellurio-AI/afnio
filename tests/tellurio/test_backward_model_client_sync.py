@@ -25,10 +25,14 @@ async def login_fixture():
 
 class TestBackwardModelClientSync:
 
-    def test_set_and_get_backward_model_client(self):
+    def test_set_and_get_backward_model_client(self, monkeypatch):
         """
         Test setting and retrieving the backward model client and its registration.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+        # Setting and getting the backward model client
         client_args = {"api_key": "test-key", "organization": "test-org"}
         completion_args = {"model": "gpt-4o", "temperature": 0.5}
         set_backward_model_client(
@@ -77,10 +81,14 @@ class TestBackwardModelClientSync:
         with pytest.raises(ValueError, match="Unsupported provider: notvalid."):
             set_backward_model_client(model_path="notvalid/gpt-4o")
 
-    def test_set_backward_model_client_twice_reinitializes(self):
+    def test_set_backward_model_client_twice_reinitializes(self, monkeypatch):
         """
         Test that setting the backward model client twice reinitializes the singleton.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+        # Setting backward model client
         set_backward_model_client(
             model_path="openai/gpt-4o",
             client_args={"api_key": "key1"},
