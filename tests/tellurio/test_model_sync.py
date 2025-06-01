@@ -13,10 +13,14 @@ from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 
 @pytest.fixture
-def model():
+def model(monkeypatch):
     """
     Fixture to create an LM model instance.
     """
+    # Forcing consent to sharing API keys
+    monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+    # Create OpenAI model client
     model = AsyncOpenAI(api_key="1234567890", organization="test-org")
     # Ensure model is registered
     assert model.model_id in MODEL_REGISTRY

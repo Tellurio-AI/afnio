@@ -88,10 +88,14 @@ class TestSerializeArg:
         assert serialized["__variable__"] is True
         assert serialized["variable_id"] == x.variable_id
 
-    def test_serialize_arg_model_client(self):
+    def test_serialize_arg_model_client(self, monkeypatch):
         """
         Test serialization of an LM model client.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+        # Create OpenAI model client
         model = OpenAI(api_key="test_key")
         serialized = _serialize_arg(model)
         assert isinstance(serialized, dict)
