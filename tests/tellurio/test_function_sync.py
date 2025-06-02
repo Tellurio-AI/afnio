@@ -27,11 +27,13 @@ def variables():
 
 
 class TestFunctionSync:
-    """Tests for synchronous function operations in afnio.autodiff."""
+    """
+    Tests for forward and backward passes of Function operations in afnio.autodiff.
+    """
 
-    def test_add_apply(self, variables):
+    def test_forward_add(self, variables):
         """
-        Test the Add function's apply method with two Variable inputs.
+        Test the Add function's forward pass with two Variable inputs.
         """
         x, y = variables
         result = Add.apply(x, y)
@@ -47,9 +49,9 @@ class TestFunctionSync:
         assert "None" in str(result.grad_fn.next_functions[1].node)
         result.grad_fn.next_functions[1].output_nr == 0
 
-    def test_split_apply(self, variables):
+    def test_forward_split(self, variables):
         """
-        Test the Split function's apply method with single Variable input.
+        Test the Split function's forward pass with single Variable input.
         """
         x, _ = variables
         x.data = "a b c"
@@ -67,9 +69,9 @@ class TestFunctionSync:
             assert "<AccumulateGrad" in str(v.grad_fn.next_functions[0].node)
             assert v.grad_fn.next_functions[0].output_nr == 0
 
-    def test_deterministic_evaluator_apply(self, variables):
+    def test_forward_deterministic_evaluator(self):
         """
-        Test the DeterministicEvaluator function's apply method with Callable input.
+        Test the DeterministicEvaluator function's forward pass with Callable input.
         """
 
         def exact_match_fn(pred: str, tgt: str) -> int:
@@ -107,3 +109,23 @@ class TestFunctionSync:
             assert var.grad_fn.next_functions[0].output_nr == 0
             assert "None" in str(var.grad_fn.next_functions[1].node)
             assert var.grad_fn.next_functions[1].output_nr == 0
+
+    def test_backward_add(self, variables):
+        """
+        Test the Add function's backward pass.
+        """
+        x, y = variables
+        result = Add.apply(x, y)
+        assert isinstance(result, Variable)
+        assert result.data == "abcdef"
+
+        gradient = Variable(data="MY_FEEDBACK", role="add gradient")
+        result.backward(gradient)
+
+        assert len(x.grad) == 1
+        assert y.grad == []  # requires_grad=False, so no gradient
+        assert x.grad[0].data == (
+            "Here is the combined feedback we got for this specific "
+            "first input and other variables: MY_FEEDBACK"
+        )
+        assert x.grad[0].role == "feedback to first input"
