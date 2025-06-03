@@ -4,6 +4,7 @@ from typing import Optional
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import run_in_background_loop
+from afnio.tellurio._variable_registry import get_variable
 from afnio.tellurio.client import get_default_client
 
 # from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
@@ -99,6 +100,33 @@ def backward(
         # Get the singleton websocket client
         _, ws_client = get_default_client()
 
+        # Fetch all Variables which gradients will be computed during backpropagation
+        # and mark them as pending for grad update
+        payload = {"variables": serialized_variables}
+        response_ids = run_in_background_loop(
+            ws_client.call("get_backprop_ids", payload)
+        )
+        logger.debug(
+            f"Fetched backpropagation variable IDs from the server: {response_ids!r}"
+        )
+
+        result_ids = response_ids.get("result", {})
+        backprop_variable_ids = result_ids.get("backprop_variable_ids", [])
+        if backprop_variable_ids:
+            for var_id in backprop_variable_ids:
+                var = get_variable(var_id)
+                if var is not None:
+                    var._pending_grad = True
+                    logger.debug(
+                        f"Marked variable {var_id!r} as pending for grad update."
+                    )
+                else:
+                    logger.warning(
+                        f"Variable id {var_id!r} returned for backward, "
+                        "but not found in VARIABLE_REGISTRY."
+                    )
+
+        # Run backward pass
         payload = {
             "variables": serialized_variables,
             "grad_variables": serialized_grad_variables,
@@ -106,21 +134,24 @@ def backward(
             "create_graph": serialized_create_graph,
             "inputs": serialized_inputs,
         }
-        response = run_in_background_loop(ws_client.call("run_backward", payload))
+        response_bwd = run_in_background_loop(ws_client.call("run_backward", payload))
         logger.debug(
             f"Backward pass instantiated and shared with the server: {variables!r}"
         )
 
-        # Deserialize the result
-        result_message = response.get("result", {}).get("message")
+        result_message = response_bwd.get("result", {}).get("message")
         if result_message != "Backward pass executed successfully.":
             logger.error(
                 f"Server did not return any data for backward pass: "
-                f"payload={payload!r}, response={response!r}"
+                f"payload={payload!r}, response={response_bwd!r}"
             )
             raise RuntimeError(
                 "Failed to run backward pass: server did not return data."
             )
+
+        logger.debug(
+            f"Backward pass executed successfully with variables: {variables!r}"
+        )
 
     except Exception as e:
         logger.error(f"Failed to share backward pass with the server: {e}")
