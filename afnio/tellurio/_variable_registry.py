@@ -72,6 +72,7 @@ def update_local_variable_field(variable_id: str, field: str, value):
             from afnio._variable import Variable
 
             var.grad = [Variable(**g) for g in value] if value else []
+            var._pending_grad = False  # Reset _pending_grad flag
         elif field == "_output_nr":
             var.output_nr = value
         elif field == "_grad_fn":

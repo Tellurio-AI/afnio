@@ -91,6 +91,7 @@ class Variable:
     variable_id: Optional[str]
     _initialized: bool
     _pending_grad_fn_id: Optional[str]
+    _pending_grad: Optional[bool]
 
     def __init__(
         self,
@@ -129,7 +130,8 @@ class Variable:
         # Websocket attributes
         self.variable_id = None
         self._initialized = False  # Falgs variable is ready to send websocket updates
-        self._pending_grad_fn_id = None  # Flagsvariable has a pending grad_fn to be set
+        self._pending_grad_fn_id = None  # Flags variable has pending grad_fn to be set
+        self._pending_grad = False  # Flags variable has pending grad to be set
         # Internal attributes
         self.data = data
         self.role = role
@@ -332,21 +334,9 @@ class Variable:
 
     @property
     def grad_fn(self) -> Optional["Node"]:
-        if self._pending_grad_fn_id is not None:
-            TIMEOUT = 3  # seconds
-            INTERVAL = 0.01  # seconds
-            waited = 0.0
-
-            # Wait for the grad_fn to be returned by the server
-            while self._pending_grad_fn_id is not None and waited < TIMEOUT:
-                time.sleep(INTERVAL)
-                waited += INTERVAL
-            if self._pending_grad_fn_id is not None:
-                raise RuntimeError(
-                    f"Timeout waiting for grad_fn node "
-                    f"for variable_id={self.variable_id} "
-                    f"(waiting for node_id={self._pending_grad_fn_id})"
-                )
+        self._wait_for_pending(
+            "_pending_grad_fn_id"
+        )  # Wait until the pending flag is cleared
         return self._grad_fn
 
     @grad_fn.setter
@@ -372,6 +362,9 @@ class Variable:
 
     @property
     def grad(self) -> Optional["Variable"]:
+        self._wait_for_pending(
+            "_pending_grad"
+        )  # Wait until the pending flag is cleared
         if self.is_leaf or self._retain_grad:
             return self._grad
         else:
@@ -585,9 +578,17 @@ class Variable:
             )
             raise RuntimeError("Cannot notify server: variable_id is None.")
 
-        if field in {"output_nr", "grad_fn", "grad", "_initialized"}:
+        if field in {
+            "output_nr",
+            "grad_fn",
+            "grad",
+            "_initialized",
+            "_pending_grad_fn_id",
+            "_pending_grad",
+        }:
             # Do not notify for the property setter, as we already notify
             # for all the changes made inside the property setter.
+            # Also do not notify for `_initialized` and pending states
             return
         elif field == "_grad":
             grad_value = self.grad
@@ -651,6 +652,30 @@ class Variable:
         super().__setattr__(name, value)
         if getattr(self, "_initialized", False):
             self._on_variable_change(name, value)
+
+    def _wait_for_pending(
+        self, attr_name: str, timeout: float = 3, interval: float = 0.01
+    ) -> None:
+        """
+        Wait until the attribute specified by `attr_name` is no longer truthy.
+        Uses time.monotonic() for more reliable timeout measurement.
+
+        Args:
+            attr_name (str): Name of the attribute to wait on.
+            timeout (float): Maximum time to wait, in seconds.
+            interval (float): How frequently to check the attribute, in seconds.
+
+        Raises:
+            RuntimeError: If the attribute remains truthy after the timeout.
+        """
+        end_time = time.monotonic() + timeout
+        while getattr(self, attr_name):
+            if time.monotonic() > end_time:
+                raise RuntimeError(
+                    f"Timeout waiting for {attr_name} to be cleared "
+                    f"for variable_id={self.variable_id}"
+                )
+            time.sleep(interval)
 
 
 def is_variable(obj):

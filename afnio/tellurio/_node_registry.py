@@ -1,12 +1,13 @@
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
-from afnio.autodiff.graph import GradientEdge, Node
+if TYPE_CHECKING:
+    from afnio.autodiff.graph import GradientEdge, Node
 
 # Registry mapping node_id to Node instance
-NODE_REGISTRY: Dict[str, Node] = {}
+NODE_REGISTRY: Dict[str, "Node"] = {}
 
 
-def register_node(node: Node):
+def register_node(node: "Node"):
     """
     Register a Node instance in the local registry.
 
@@ -17,7 +18,7 @@ def register_node(node: Node):
         NODE_REGISTRY[node.node_id] = node
 
 
-def get_node(node_id: str) -> Optional[Node]:
+def get_node(node_id: str) -> Optional["Node"]:
     """
     Retrieve a Node instance from the registry by its node_id.
 
@@ -30,7 +31,7 @@ def get_node(node_id: str) -> Optional[Node]:
     return NODE_REGISTRY.get(node_id)
 
 
-def create_node(data: dict) -> Node:
+def create_node(data: dict) -> "Node":
     """
     Create and register a Node from serialized data received from the server.
 
@@ -41,6 +42,7 @@ def create_node(data: dict) -> Node:
         Node: The created and registered Node instance.
     """
     from afnio._variable import _allow_grad_fn_assignment
+    from afnio.autodiff.graph import Node
     from afnio.tellurio._variable_registry import (
         PENDING_GRAD_FN_ASSIGNMENTS,
         suppress_variable_notifications,
@@ -61,7 +63,7 @@ def create_node(data: dict) -> Node:
     return node
 
 
-def create_and_append_edge(data: dict) -> GradientEdge:
+def create_and_append_edge(data: dict) -> "GradientEdge":
     """
     Create a GradientEdge from serialized data
     and append it to from_node.next_functions.
@@ -77,6 +79,8 @@ def create_and_append_edge(data: dict) -> GradientEdge:
     Returns:
         GradientEdge: The created GradientEdge instance.
     """
+    from afnio.autodiff.graph import GradientEdge
+
     from_node_id = data["from_node_id"]
     to_node_id = data["to_node_id"]
     from_node = get_node(from_node_id)
