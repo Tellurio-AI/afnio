@@ -4,9 +4,11 @@ import re
 import pytest
 import pytest_asyncio
 
+from afnio._utils import _serialize_arg
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add
-from afnio.autodiff.utils import deserialize_output, serialize_arg
+from afnio.autodiff.utils import _deserialize_fn_output
+from afnio.cognitive.parameter import Parameter
 from afnio.models.openai import OpenAI
 from afnio.tellurio import login
 from afnio.tellurio._node_registry import create_node
@@ -32,7 +34,7 @@ def variables():
 
 class TestSerializeArg:
     """
-    Tests for the serialize_arg function, covering Variable, list, tuple, dict,
+    Tests for the _serialize_arg function, covering Variable, list, tuple, dict,
     and primitive types.
     """
 
@@ -41,10 +43,20 @@ class TestSerializeArg:
         Test serialization of a single Variable instance.
         """
         x, _ = variables
-        serialized = serialize_arg(x)
+        serialized = _serialize_arg(x)
         assert isinstance(serialized, dict)
         assert serialized["__variable__"] is True
         assert serialized["variable_id"] == x.variable_id
+
+    def test_serialize_arg_parameter(self):
+        """
+        Test serialization of a single Parameter instance.
+        """
+        p = Parameter(data="test", role="weight", requires_grad=True)
+        serialized = _serialize_arg(p)
+        assert isinstance(serialized, dict)
+        assert serialized.get("__parameter__") is True
+        assert serialized.get("variable_id") == p.variable_id
 
     def test_serialize_arg_model_client(self, monkeypatch):
         """
@@ -55,7 +67,7 @@ class TestSerializeArg:
 
         # Create OpenAI model client
         model = OpenAI(api_key="test_key")
-        serialized = serialize_arg(model)
+        serialized = _serialize_arg(model)
         assert isinstance(serialized, dict)
         assert serialized["__model_client__"] is True
         assert serialized["model_id"] == model.model_id
@@ -65,7 +77,7 @@ class TestSerializeArg:
         Test serialization of a list of Variables.
         """
         x, y = variables
-        serialized = serialize_arg([x, y])
+        serialized = _serialize_arg([x, y])
         assert isinstance(serialized, list)
         assert all("__variable__" in item for item in serialized)
         assert serialized[0]["variable_id"] == x.variable_id
@@ -76,7 +88,7 @@ class TestSerializeArg:
         Test serialization of a tuple of Variables.
         """
         x, y = variables
-        serialized = serialize_arg((x, y))
+        serialized = _serialize_arg((x, y))
         assert isinstance(serialized, tuple)
         assert all("__variable__" in item for item in serialized)
         assert serialized[0]["variable_id"] == x.variable_id
@@ -87,7 +99,7 @@ class TestSerializeArg:
         Test serialization of a dictionary with Variables.
         """
         x, y = variables
-        serialized = serialize_arg({"x": x, "y": y})
+        serialized = _serialize_arg({"x": x, "y": y})
         assert isinstance(serialized, dict)
         assert "__variable__" in serialized["x"]
         assert "__variable__" in serialized["y"]
@@ -98,15 +110,15 @@ class TestSerializeArg:
         """
         Test serialization of primitive types (int, str, float, bool, None).
         """
-        assert serialize_arg(42) == 42
-        assert serialize_arg("hello") == "hello"
-        assert serialize_arg(3.14) == 3.14
-        assert serialize_arg(True) is True
-        assert serialize_arg(None) is None
+        assert _serialize_arg(42) == 42
+        assert _serialize_arg("hello") == "hello"
+        assert _serialize_arg(3.14) == 3.14
+        assert _serialize_arg(True) is True
+        assert _serialize_arg(None) is None
 
     def test_serialize_arg_unrecognized_type(self):
         """
-        Test that serialize_arg raises TypeError for unrecognized types.
+        Test that _serialize_arg raises TypeError for unrecognized types.
         """
 
         class Dummy:
@@ -114,16 +126,16 @@ class TestSerializeArg:
 
         dummy = Dummy()
         with pytest.raises(TypeError, match="Cannot serialize object of type Dummy"):
-            serialize_arg(dummy)
+            _serialize_arg(dummy)
 
 
-class TestDeserializeOutput:
+class TestDeserializeFnOutput:
     """
-    Tests for the deserialize_output function, covering single Variable,
+    Tests for the _deserialize_fn_output function, covering single Variable,
     list of Variables, and handling of non-Variable types.
     """
 
-    def test_deserialize_output_variable(self, variables):
+    def test_deserialize_fn_output_variable(self, variables):
         """
         Test deserialization of a single Variable instance.
         This test ensures that the deserialized Variable retains all attributes
@@ -148,7 +160,7 @@ class TestDeserializeOutput:
             "_grad_fn": node_id,
             "is_leaf": result.is_leaf,
         }
-        var = deserialize_output(obj)
+        var = _deserialize_fn_output(obj)
         assert isinstance(var, Variable)
         assert var.variable_id == result.variable_id
         assert var.data == result.data
@@ -160,7 +172,7 @@ class TestDeserializeOutput:
         assert var.grad_fn.node_id == node_id
         assert var.is_leaf is result.is_leaf
 
-    def test_deserialize_output_variable_with_pending_grad_fn(self, variables):
+    def test_deserialize_fn_output_variable_with_pending_grad_fn(self, variables):
         """
         Test deserialization of a Variable with a pending grad_fn assignment.
         This simulates a scenario where the grad_fn is not immediately available,
@@ -182,7 +194,7 @@ class TestDeserializeOutput:
             "_grad_fn": node_id,
             "is_leaf": result.is_leaf,
         }
-        var = deserialize_output(obj)
+        var = _deserialize_fn_output(obj)
         assert isinstance(var, Variable)
         assert var.variable_id == result.variable_id
         assert var.data == result.data
@@ -200,9 +212,8 @@ class TestDeserializeOutput:
         with pytest.raises(
             RuntimeError,
             match=re.escape(
-                f"Timeout waiting for grad_fn node "
-                f"for variable_id={result.variable_id} "
-                f"(waiting for node_id={node_id})"
+                f"Timeout waiting for _pending_grad_fn_id to be cleared "
+                f"for variable_id={result.variable_id}"
             ),
         ):
             assert var.grad_fn.node_id == node_id
@@ -215,7 +226,7 @@ class TestDeserializeOutput:
 
         assert var.grad_fn.node_id == node_id
 
-    def test_deserialize_output_list(self, variables):
+    def test_deserialize_fn_output_list(self, variables):
         """
         Test deserialization of a list of Variable instances.
         This test ensures that the deserialized list retains all Variable attributes
@@ -246,13 +257,13 @@ class TestDeserializeOutput:
                 "is_leaf": True,
             },
         ]
-        result = deserialize_output(obj_list)
+        result = _deserialize_fn_output(obj_list)
         assert isinstance(result, tuple)
         assert all(isinstance(v, Variable) for v in result)
 
-    def test_deserialize_output_invalid_type(self):
+    def test_deserialize_fn_output_invalid_type(self):
         """
-        Test that deserialize_output raises TypeError for unsupported types.
+        Test that _deserialize_fn_output raises TypeError for unsupported types.
         """
         invalid_obj = 12345  # int is not a supported type for deserialization
 
@@ -263,4 +274,4 @@ class TestDeserializeOutput:
                 "but got: <class 'int'>"
             ),
         ):
-            deserialize_output(invalid_obj)
+            _deserialize_fn_output(invalid_obj)
