@@ -145,6 +145,8 @@ class Variable:
         # Share the variable with the websocket server
         if not is_variable_notify_suppressed():
             try:
+                from afnio.cognitive.parameter import Parameter
+
                 # Get the singleton websocket client
                 _, ws_client = get_default_client()
 
@@ -152,6 +154,11 @@ class Variable:
                     "data": self.data,
                     "role": self.role,
                     "requires_grad": self.requires_grad,
+                    "obj_type": (
+                        "__parameter__"
+                        if isinstance(self, Parameter)
+                        else "__variable__"
+                    ),
                 }
                 response = run_in_background_loop(
                     ws_client.call("create_variable", payload)
@@ -293,11 +300,11 @@ class Variable:
         :func:`requires_grad_`'s main use case is to tell autodiff to begin recording
         operations on a Variable ``variable``. If ``variable`` has
         ``requires_grad=False`` (because it was obtained through a DataLoader, or
-        required preprocessing or initialization), ``tensor.requires_grad_()`` makes
-        it so that autodiff will begin to record operations on ``tensor``.
+        required preprocessing or initialization), ``variable.requires_grad_()`` makes
+        it so that autodiff will begin to record operations on ``variable``.
 
         Args:
-            requires_grad (bool): If autodiff should record operations on this tensor.
+            requires_grad (bool): If autodiff should record operations on this variable.
                 Default: ``True``.
 
         Example:
@@ -652,6 +659,7 @@ class Variable:
         super().__setattr__(name, value)
         if getattr(self, "_initialized", False):
             self._on_variable_change(name, value)
+        # TODO: Should we handle the else condition and throw an error?
 
     def _wait_for_pending(
         self, attr_name: str, timeout: float = 3, interval: float = 0.01
