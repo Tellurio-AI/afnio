@@ -8,8 +8,7 @@ from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import get_variable
 from afnio.tellurio.client import get_default_client
 
-# TODO: Create RPC calls for `is_grad_enabled`, `no_grad`, `set_grad_enabled`
-# from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
+from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
 from .utils import (
     _VariableOrVariables,
     _VariableOrVariablesOrGradEdge,
@@ -17,9 +16,9 @@ from .utils import (
 
 __all__ = [
     "backward",
-    # "is_grad_enabled",
-    # "no_grad",
-    # "set_grad_enabled",
+    "is_grad_enabled",
+    "no_grad",
+    "set_grad_enabled",
 ]
 
 # Please keep this list sorted

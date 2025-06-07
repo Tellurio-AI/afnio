@@ -2,6 +2,7 @@ import logging
 from typing import Any, Tuple
 
 from afnio._utils import _serialize_arg
+from afnio.autodiff.grad_mode import is_grad_enabled
 from afnio.autodiff.utils import _deserialize_fn_output
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import run_in_background_loop
@@ -155,6 +156,7 @@ class Function:
 
             payload = {
                 "function_name": function_name,
+                "grad_enabled": is_grad_enabled(),
                 "args": serialized_args,
                 "kwargs": serialized_kwargs,
             }

@@ -6,6 +6,7 @@ import pytest_asyncio
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split
 from afnio.autodiff.evaluator import DeterministicEvaluator
+from afnio.autodiff.grad_mode import no_grad
 from afnio.tellurio import login
 
 
@@ -48,6 +49,22 @@ class TestFunctionSync:
         result.grad_fn.next_functions[0].output_nr == 0
         assert "None" in str(result.grad_fn.next_functions[1].node)
         result.grad_fn.next_functions[1].output_nr == 0
+        assert result.is_leaf is False
+
+    def test_forward_add_no_grad(self, variables):
+        """
+        Test the Add function's forward pass with two Variable inputs
+        and using the `no_grad()` context manager.
+        """
+        x, y = variables
+        with no_grad():
+            result = Add.apply(x, y)
+        assert isinstance(result, Variable)
+        assert result.data == "abcdef"
+        assert result.role == "first input and second input"
+        assert result.requires_grad is False
+        assert result.grad_fn is None
+        assert result.is_leaf is True
 
     def test_forward_split(self, variables):
         """
