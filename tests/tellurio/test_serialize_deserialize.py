@@ -4,7 +4,7 @@ import re
 import pytest
 import pytest_asyncio
 
-from afnio._utils import _serialize_arg
+from afnio._utils import _deserialize_output, _serialize_arg
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add
 from afnio.autodiff.utils import _deserialize_fn_output
@@ -275,3 +275,112 @@ class TestDeserializeFnOutput:
             ),
         ):
             _deserialize_fn_output(invalid_obj)
+
+
+class TestDeserializeOutput:
+    """
+    Tests for the _deserialize_output function, covering Variable, Parameters, list,
+    tuple, dict, and primitive types.
+    """
+
+    def test_deserialize_variable(self, variables):
+        """
+        Test deserialization of a variable object.
+        """
+        x, _ = variables
+        obj = {"__variable__": True, "variable_id": x.variable_id}
+        assert _deserialize_output(obj) is x
+
+    def test_deserialize_parameter(self, variables):
+        """
+        Test deserialization of a parameter object.
+        """
+        param = Parameter(data="test", role="weight", requires_grad=True)
+        obj = {"__parameter__": True, "variable_id": param.variable_id}
+        assert _deserialize_output(obj) is param
+
+    def test_deserialize_model(self):
+        """
+        Test deserialization of a model object.
+        """
+        model = OpenAI(api_key="test_key")
+        obj = {"__model_client__": True, "model_id": model.model_id}
+        assert _deserialize_output(obj) is model
+
+    def test_deserialize_dict(self, variables):
+        """
+        Test deserialization of a dictionary containing a variable.
+        """
+        x, _ = variables
+        obj = {"a": 1, "b": {"__variable__": True, "variable_id": x.variable_id}}
+        result = _deserialize_output(obj)
+        assert result == {"a": 1, "b": x}
+
+    def test_deserialize_list(self, variables):
+        """
+        Test deserialization of a list containing a variable.
+        """
+        x, _ = variables
+        obj = [1, {"__variable__": True, "variable_id": x.variable_id}, 3]
+        result = _deserialize_output(obj)
+        assert result == [1, x, 3]
+
+    def test_deserialize_tuple(self):
+        """
+        Test deserialization of a tuple containing a model.
+        """
+        model = OpenAI(api_key="test_key")
+        obj = (1, {"__model_client__": True, "model_id": model.model_id})
+        result = _deserialize_output(obj)
+        assert result == (1, model)
+
+    def test_deserialize_primitive(self):
+        """
+        Test deserialization of primitive types (None, int, float, str, bool).
+        """
+        for val in [None, 42, 3.14, "foo", True, False]:
+            assert _deserialize_output(val) == val
+
+    def test_deserialize_variable_not_found(self):
+        """
+        Test deserialization of a variable that does not exist in the context.
+        """
+        obj = {"__variable__": True, "variable_id": "notfound"}
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Variable with variable_id 'notfound' not found"),
+        ):
+            _deserialize_output(obj)
+
+    def test_deserialize_parameter_not_found(self):
+        """
+        Test deserialization of a parameter that does not exist in the context.
+        """
+        obj = {"__parameter__": True, "variable_id": "notfound"}
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Parameter with variable_id 'notfound' not found"),
+        ):
+            _deserialize_output(obj)
+
+    def test_deserialize_model_not_found(self):
+        """
+        Test deserialization of a model that does not exist in the context.
+        """
+        obj = {"__model_client__": True, "model_id": "notfound"}
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Model with model_id 'notfound' not found"),
+        ):
+            _deserialize_output(obj)
+
+    def test_deserialize_unexpected_type(self):
+        """
+        Test deserialization of an unexpected input type (e.g., set).
+        Should raise a TypeError.
+        """
+        obj = {1, 2, 3}
+        with pytest.raises(
+            TypeError, match=r"Cannot deserialize object of type .*set.*"
+        ):
+            _deserialize_output(obj)
