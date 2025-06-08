@@ -418,7 +418,7 @@ class Variable:
         """
         if self.is_leaf or self._retain_grad:
             self._grad.append(gradient)
-            self._on_variable_change("_grad", gradient)
+            self._on_variable_change("_grad", self.grad)
         else:
             # Throwing a `UserWarning`` instead of `RuntimeError` could do here, like
             # in Pytorch, but for now I cannot think of any use case for not throwing
@@ -575,6 +575,8 @@ class Variable:
             field (str): The name of the field that changed.
             value: The new value of the field.
         """
+        from afnio._utils import _serialize_arg
+
         if is_variable_notify_suppressed():
             return  # Do not notify server
 
@@ -598,18 +600,12 @@ class Variable:
             # Also do not notify for `_initialized` and pending states
             return
         elif field == "_grad":
-            grad_value = self.grad
-            if grad_value:
-                end_value = [
-                    {
-                        "data": getattr(g, "data", ""),
-                        "role": getattr(g, "role", ""),
-                        "requires_grad": getattr(g, "requires_grad", None),
-                    }
-                    for g in grad_value
-                ]
-            else:
-                end_value = []
+            if not isinstance(value, list):
+                raise TypeError(
+                    f"Expected `value` to be a list for field '{field}', "
+                    f"but got {type(value).__name__}."
+                )
+            end_value = [_serialize_arg(g) for g in value]
         elif field == "_grad_fn":
             raise RuntimeError(
                 "Setting `grad_fn` is only allowed on the server by the autodiff "

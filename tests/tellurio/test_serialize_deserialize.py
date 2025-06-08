@@ -299,10 +299,13 @@ class TestDeserializeOutput:
         obj = {"__parameter__": True, "variable_id": param.variable_id}
         assert _deserialize_output(obj) is param
 
-    def test_deserialize_model(self):
+    def test_deserialize_model(self, monkeypatch):
         """
         Test deserialization of a model object.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
         model = OpenAI(api_key="test_key")
         obj = {"__model_client__": True, "model_id": model.model_id}
         assert _deserialize_output(obj) is model
@@ -325,10 +328,13 @@ class TestDeserializeOutput:
         result = _deserialize_output(obj)
         assert result == [1, x, 3]
 
-    def test_deserialize_tuple(self):
+    def test_deserialize_tuple(self, monkeypatch):
         """
         Test deserialization of a tuple containing a model.
         """
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
         model = OpenAI(api_key="test_key")
         obj = (1, {"__model_client__": True, "model_id": model.model_id})
         result = _deserialize_output(obj)

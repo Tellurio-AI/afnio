@@ -66,7 +66,6 @@ class TestClientToServerVariableSync:
         response = run_in_background_loop(
             ws_client.call("get_variable", {"variable_id": variable_id})
         )
-        print(response)
         return response["result"]
 
     def test_create_variable(self, variable):
@@ -183,8 +182,8 @@ class TestClientToServerVariableSync:
         # Assert that the variable was updated on the server
         server_var = self.fetch_server_variable(variable.variable_id)
         assert server_var["grad"] == [
-            {"data": "gradient", "role": "grad_1", "requires_grad": False},
-            {"data": "gradient", "role": "grad_2", "requires_grad": False},
+            {"__variable__": True, "variable_id": grad_1.variable_id},
+            {"__variable__": True, "variable_id": grad_2.variable_id},
         ]
 
     def test_append_grad_triggers_notification(self, variable):
@@ -202,7 +201,7 @@ class TestClientToServerVariableSync:
         # Assert that the variable was updated on the server
         server_var = self.fetch_server_variable(variable.variable_id)
         assert server_var["grad"] == [
-            {"data": "gradient", "role": "grad_1", "requires_grad": False}
+            {"__variable__": True, "variable_id": grad_1.variable_id}
         ]
 
         # Append second gradient
@@ -215,8 +214,8 @@ class TestClientToServerVariableSync:
         # Assert that the variable was updated on the server
         server_var = self.fetch_server_variable(variable.variable_id)
         assert server_var["grad"] == [
-            {"data": "gradient", "role": "grad_1", "requires_grad": False},
-            {"data": "gradient", "role": "grad_2", "requires_grad": False},
+            {"__variable__": True, "variable_id": grad_1.variable_id},
+            {"__variable__": True, "variable_id": grad_2.variable_id},
         ]
 
     def test_retain_grad_method_triggers_notification(self, variable):
