@@ -146,3 +146,31 @@ class TestFunctionSync:
             "first input and other variables: MY_FEEDBACK"
         )
         assert x.grad[0].role == "feedback to first input"
+
+    def test_backward_clear_pending_grad(self):
+        """
+        Test that _pending_grad is set during backward
+        and cleared after 'clear_backward'.
+
+        DAG:
+                b → c → d
+              ↗           ↘
+            a  → → → → → → e
+        """
+
+        a = Variable(data="abc_", role="first input", requires_grad=True)
+        b = a + Variable(data="def_", role="second input")
+        c = b + Variable(data="ghi_", role="third input")
+        d = c + Variable(data="jkl_", role="fourth input")
+        e = Add.apply(a, d)
+
+        gradient = Variable(data="MY_FEEDBACK", role="add gradient")
+        e.backward(gradient)
+
+        # The variable should have _pending_grad set before clear_backward
+        assert a._pending_grad is True
+
+        # We are only able to read `a.grad` when we exit `_wait_for_pending()`
+        # and at that point, _pending_grad should be True
+        assert len(a.grad) == 2
+        assert a._pending_grad is False

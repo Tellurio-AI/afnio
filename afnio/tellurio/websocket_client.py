@@ -16,6 +16,7 @@ from afnio.tellurio._node_registry import (
     create_node,
 )
 from afnio.tellurio._variable_registry import (
+    clear_pending_grad,
     suppress_variable_notifications,
     update_local_variable_field,
 )
@@ -490,6 +491,46 @@ class TellurioWebSocketClient:
                 f"Exception during execution of callable "
                 f"with ID {params.get('callable_id')!r}: {e}"
             )
+
+    async def rpc_clear_backward(self, params):
+        """
+        Handle the 'clear_backward' JSON-RPC method from the server.
+
+        This method clears the `_pending_grad` flag for the specified variables.
+        It is called after the server finalizes the backward pass for the entire
+        computation graph, indicating that the gradients for its variables have been
+        computed and already shared with the client. Once it receives 'clear_backward',
+        the client can safely access the values of these gradients without worrying
+        about them being modified.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "variable_ids": A list of variable IDs for which to clear
+                    the `_pending_grad` flag.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If one of the variables cannot be updated.
+        """
+        try:
+            variable_ids = params["variable_ids"]
+            clear_pending_grad(variable_ids)
+
+            logger.debug(f"Cleared pending gradients for variables: {variable_ids!r}")
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Exception during execution of backward clearing: {e}")
+            raise RuntimeError(f"Exception during execution of backward clearing: {e}")
 
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """

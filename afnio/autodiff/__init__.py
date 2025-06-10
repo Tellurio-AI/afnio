@@ -111,7 +111,7 @@ def backward(
         )
 
         result_ids = response_ids.get("result", {})
-        backprop_variable_ids = result_ids.get("backprop_variable_ids", [])
+        backprop_variable_ids = result_ids.get("variable_ids", [])
         if backprop_variable_ids:
             for var_id in backprop_variable_ids:
                 var = get_variable(var_id)
