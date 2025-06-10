@@ -11,6 +11,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -397,15 +398,19 @@ class Optimizer:
     def step(self, closure: None = ...) -> None: ...
 
     @overload
-    def step(self, closure: Callable[[], float]) -> float: ...
+    def step(
+        self, closure: Callable[[], Tuple[Variable, Variable]]
+    ) -> Tuple[Variable, Variable]: ...
 
-    # TODO: Set a pending status to parameters like `_pending_grad` for backpropagation
-    def step(self, closure: Optional[Callable[[], float]] = None) -> Optional[float]:
+    def step(
+        self, closure: Optional[Callable[[], Tuple[Variable, Variable]]] = None
+    ) -> Optional[Tuple[Variable, Variable]]:
         r"""Performs a single optimization step (parameter update).
 
         Args:
-            closure (Callable): A closure that reevaluates the model and
-                returns the loss. Optional for most optimizers.
+            closure (Callable, optional): A closure that reevaluates the model and
+                returns the loss as a tuple containing a numerical score and a textual
+                explanation. This closure is optional for most optimizers.
 
         .. note::
             Unless otherwise specified, this function should not modify the
@@ -430,6 +435,14 @@ class Optimizer:
 
                     optimizer.step(closure)
         """
+        # Set `_pending_data` for all parameters that will be optimized
+        for group in self.param_groups:
+            for p in group["params"]:
+                p._pending_data = True
+                logger.debug(
+                    f"Marked variable {p.variable_id!r} as pending for data update."
+                )
+
         try:
             # Get the singleton websocket client
             _, ws_client = get_default_client()
@@ -437,16 +450,14 @@ class Optimizer:
             payload = {
                 "optimizer_id": self.optimizer_id,
             }
-            response = run_in_background_loop(
-                ws_client.call("run_optimization", payload)
-            )
+            response = run_in_background_loop(ws_client.call("run_step", payload))
             logger.debug(
                 f"Optimization instantiated and shared with the server: "
                 f"optimizer_id={self.optimizer_id!r}"
             )
 
             result_message = response.get("result", {}).get("message")
-            if result_message != "Optimization executed successfully.":
+            if result_message != "Optimizer step executed successfully.":
                 logger.error(
                     f"Server did not return any data for optimization operation: "
                     f"payload={payload!r}, response={response!r}"

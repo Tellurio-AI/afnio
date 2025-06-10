@@ -92,10 +92,10 @@ def update_local_variable_field(variable_id: str, field: str, value):
 
 def clear_pending_grad(variable_ids: Optional[List[str]] = []):
     """
-    Clear the pending gradient flag for specified Variable instances.
+    Clear the `_pending_grad` flag for specified Variable instances.
 
     This function is used to reset the `_pending_grad` flag for Variables that are
-    waiting for their gradients to be computed.
+    waiting for their gradients to be computed during a backward pass on the server.
 
     Args:
         variable_ids (Optional[List[str]]): List of variable IDs to clear.
@@ -105,6 +105,23 @@ def clear_pending_grad(variable_ids: Optional[List[str]] = []):
         if var is None:
             raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
         var._pending_grad = False
+
+
+def clear_pending_data(variable_ids: Optional[List[str]] = []):
+    """
+    Clear the `_pending_data` flag for specified Variable instances.
+
+    This function is used to reset the `_pending_data` flag for Variables that are
+    waiting for their data to be computed during an optimization step on the server.
+
+    Args:
+        variable_ids (Optional[List[str]]): List of variable IDs to clear.
+    """
+    for var_id in variable_ids:
+        var = get_variable(var_id)
+        if var is None:
+            raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
+        var._pending_data = False
 
 
 @contextmanager

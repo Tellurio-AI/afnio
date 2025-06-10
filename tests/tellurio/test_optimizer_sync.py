@@ -3,6 +3,7 @@ import os
 import pytest
 import pytest_asyncio
 
+from afnio._variable import Variable
 from afnio.cognitive.parameter import Parameter
 from afnio.models.openai import AsyncOpenAI
 from afnio.optim import TGD
@@ -11,19 +12,29 @@ from afnio.tellurio._optimizer_registry import OPTIMIZER_REGISTRY
 
 
 @pytest.fixture
-def tgd_optimizer():
+def parameter():
+    """
+    Fixture to create a Parameter instance.
+    """
+    # Create a parameter to optimize
+    return Parameter(data="Initial value", role="parameter", requires_grad=True)
+
+
+@pytest.fixture
+def tgd_optimizer(parameter, monkeypatch):
     """
     Fixture to create a TGD Optimizer instance.
     """
-    # Create a parameter to optimize
-    param = Parameter(data="Initial value", role="parameter", requires_grad=True)
+    # Forcing consent to sharing API keys
+    monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
 
     # Create OpenAI model client
-    optim_model_client = AsyncOpenAI(api_key="1234567890", organization="test-org")
+    api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
+    optim_model_client = AsyncOpenAI(api_key=api_key)
 
     # Create TGD optimizer
     optimizer = TGD(
-        [param], model_client=optim_model_client, momentum=3, model="gpt-4o"
+        [parameter], model_client=optim_model_client, momentum=3, model="gpt-4o"
     )
 
     # Assert initial state of the optimizer
@@ -50,7 +61,7 @@ def tgd_optimizer():
     }
     assert optimizer.state == []
     assert optimizer.defaults == defaults
-    defaults["params"] = [param]
+    defaults["params"] = [parameter]
     assert optimizer.param_groups == [defaults]
 
     return optimizer
@@ -76,3 +87,68 @@ class TestClientToServerOptimizerSync:
         assert tgd_optimizer.optimizer_id is not None
         assert tgd_optimizer.optimizer_id in OPTIMIZER_REGISTRY
         assert OPTIMIZER_REGISTRY[tgd_optimizer.optimizer_id] is tgd_optimizer
+
+    def test_run_step(self, parameter, tgd_optimizer):
+        """
+        Test that running a step on the TGD optimizer returns the expected loss.
+        """
+
+        assert parameter.data == "Initial value"
+
+        gradient = Variable(data="Use only capital letters", role="gradient")
+        parameter.append_grad(gradient)
+
+        def closure():
+            # Simulate a loss calculation
+            return (
+                Variable(data=10, role="score"),
+                Variable(data="Explanation", role="explanation"),
+            )
+
+        loss = tgd_optimizer.step(closure)
+        score, explanation = loss
+        assert isinstance(loss, tuple)
+        assert len(loss) == 2
+        assert isinstance(score, Variable)
+        assert isinstance(explanation, Variable)
+        assert score.data == 10
+        assert explanation.data == "Explanation"
+
+        assert parameter.data == "INITIAL VALUE"
+
+    def test_run_step_clear_pending_data(self, tgd_optimizer):
+        """
+        Test that _pending_data is set during optimizer step
+        and cleared after the update.
+
+        This uses a single parameter and a TGD optimizer.
+        """
+        param_1 = Variable(data="Initial value 1", role="parameter", requires_grad=True)
+        param_2 = Variable(data="Initial value 2", role="parameter", requires_grad=True)
+        param_3 = Variable(data="Initial value 3", role="parameter", requires_grad=True)
+        param_4 = Variable(data="Initial value 4", role="parameter", requires_grad=True)
+        param_5 = Variable(data="Initial value 5", role="parameter", requires_grad=True)
+
+        gradient = Variable(data="Use only capital letters", role="gradient")
+        p_list = [param_1, param_2, param_3, param_4, param_5]
+        for param in p_list:
+            param.append_grad(gradient)
+
+        # Create OpenAI model client and TGD optimizer
+        api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
+        optim_model_client = AsyncOpenAI(api_key=api_key)
+        optimizer = TGD(
+            p_list, model_client=optim_model_client, momentum=3, model="gpt-4o"
+        )
+        optimizer.step()
+
+        # The parameters should have _pending_data set before clear_step
+        for param in p_list:
+            assert param._pending_data is True
+
+        # We are only able to read `param.data` when we exit `_wait_for_pending()`
+        # and at that point, _pending_data should be False
+        for param in p_list:
+            assert isinstance(param.data, str)
+            assert param.data == param.data.upper()
+            assert param._pending_data is False

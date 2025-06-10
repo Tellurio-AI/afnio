@@ -157,7 +157,6 @@ class TestFunctionSync:
               ↗           ↘
             a  → → → → → → e
         """
-
         a = Variable(data="abc_", role="first input", requires_grad=True)
         b = a + Variable(data="def_", role="second input")
         c = b + Variable(data="ghi_", role="third input")

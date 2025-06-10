@@ -71,7 +71,7 @@ class Variable:
         >>> a = hf.Variable("abc", requires_grad=True)
         >>> a.is_leaf
         True
-        >>> b = torch.rand("abc", requires_grad=True).upper()
+        >>> b = hf.Variable("abc", requires_grad=True).upper()
         >>> b.is_leaf
         False
         # b was created by the operation that converts all string characters to uppercase
@@ -92,6 +92,7 @@ class Variable:
     _initialized: bool
     _pending_grad_fn_id: Optional[str]
     _pending_grad: Optional[bool]
+    _pending_data: Optional[bool]
 
     def __init__(
         self,
@@ -130,8 +131,9 @@ class Variable:
         # Websocket attributes
         self.variable_id = None
         self._initialized = False  # Falgs variable is ready to send websocket updates
-        self._pending_grad_fn_id = None  # Flags variable has pending grad_fn to be set
-        self._pending_grad = False  # Flags variable has pending grad to be set
+        self._pending_grad_fn_id = None  # Flags grad_fn is being set (fwd pass running)
+        self._pending_grad = False  # Flags grad is being set (bwd pass running)
+        self._pending_data = False  # Flags data is being set (optim step running)
         # Internal attributes
         self.data = data
         self.role = role
@@ -325,6 +327,17 @@ class Variable:
         self.requires_grad = mode
         self.is_leaf = not self.requires_grad or self.grad_fn is None
         return self
+
+    @property
+    def data(self):
+        self._wait_for_pending(
+            "_pending_data"
+        )  # Wait until the pending flag is cleared
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
 
     @property
     def output_nr(self) -> int:
@@ -594,6 +607,7 @@ class Variable:
             "_initialized",
             "_pending_grad_fn_id",
             "_pending_grad",
+            "_pending_data",
         }:
             # Do not notify for the property setter, as we already notify
             # for all the changes made inside the property setter.
