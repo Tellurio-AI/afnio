@@ -178,3 +178,27 @@ class TestClientToServerOptimizerSync:
         # Check that gradients are cleared and the grad list object is the same
         assert len(parameter.grad) == 0
         assert grad_list_id == id(parameter.grad)
+
+    def test_add_param_group(self, parameter, tgd_optimizer):
+        """
+        Test that adding a new parameter group to the optimizer works correctly and
+        does not create a new param_groups list object.
+        """
+        # Get the ID of the param_groups before adding
+        param_groups_id = id(tgd_optimizer.param_groups)
+
+        # Check initial state of the optimizer
+        assert len(tgd_optimizer.param_groups) == 1
+        assert tgd_optimizer.param_groups[0]["params"] == [parameter]
+
+        # Add a new parameter group
+        new_param = Variable(data="New parameter", role="parameter", requires_grad=True)
+        new_param_group = {"params": [new_param]}
+        tgd_optimizer.add_param_group(new_param_group)
+
+        # Check the updated state of the optimizer
+        assert len(tgd_optimizer.param_groups) == 2
+        assert tgd_optimizer.param_groups[1]["params"] == [new_param]
+
+        # Ensure the param_groups list object is the same
+        assert param_groups_id == id(tgd_optimizer.param_groups)

@@ -529,7 +529,37 @@ class Optimizer:
             param_group (dict): Specifies what Variables should be optimized along with
                 group specific optimization options.
         """
-        # TODO: Finalize method with RPC call
-        pass
+        try:
+            # Get the singleton websocket client
+            _, ws_client = get_default_client()
+
+            messages = self.defaults.get("messages", [])
+            payload = {
+                "optimizer_id": self.optimizer_id,
+                "messages": _serialize_arg(messages),
+                "param_group": _serialize_arg(param_group),
+            }
+            response = run_in_background_loop(
+                ws_client.call("add_param_group", payload)
+            )
+            logger.debug(
+                f"Param group added and shared with the server: {param_group!r}"
+            )
+
+            result = response.get("result", {})
+            param_group = result.get("param_group")
+
+            if not param_group:
+                logger.error(
+                    f"Server did not return a param_group "
+                    f"for payload: {payload!r}, response: {response!r}"
+                )
+                raise RuntimeError(
+                    "Failed to add param_group: server did not return a param_groups."
+                )
+            self.param_groups.append(_deserialize_output(param_group))
+        except Exception as e:
+            logger.error(f"Failed to add param group to the optimizer: {e}")
+            raise
 
     # TODO: Implement `_on_optimizer_change` like done for `_on_variable_change`
