@@ -16,6 +16,7 @@ from afnio.tellurio._node_registry import (
     create_node,
 )
 from afnio.tellurio._variable_registry import (
+    append_grad_local,
     clear_pending_data,
     clear_pending_grad,
     suppress_variable_notifications,
@@ -312,6 +313,48 @@ class TellurioWebSocketClient:
             )
             raise RuntimeError(
                 f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+
+    async def rpc_append_grad(self, params):
+        """
+        Handle the 'append_grad' JSON-RPC method from the server.
+
+        This method appends a new gradient variable to the local grad list of the
+        specified Variable instance. It is typically called when the server notifies
+        the client that a new gradient has been added to a variable during
+        the backward pass.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "variable_id": The unique identifier of the Variable to update.
+                - "gradient": The serialized gradient Variable to append.
+
+        Returns:
+            dict: A dictionary with a success message if the gradient is appended.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If appending the gradient fails for any reason.
+        """
+        try:
+            with suppress_variable_notifications():
+                append_grad_local(params["variable_id"], params["gradient"])
+                logger.debug(
+                    f"Gradient appended: variable_id={params['variable_id']!r} "
+                    f"gradient={params['gradient']!r}"
+                )
+                return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to append gradient for variable with ID "
+                f"{params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to append gradient for variable with ID "
+                f"{params.get('variable_id')!r}: {e}"
             )
 
     async def rpc_create_node(self, params):

@@ -90,6 +90,37 @@ def update_local_variable_field(variable_id: str, field: str, value):
         )
 
 
+def append_grad_local(variable_id: str, grad: dict):
+    """
+    Append a gradient to the local Variable instance identified by variable_id.
+
+    This function is typically called in response to a server notification (e.g., via
+    an RPC method) indicating that a new gradient should be appended to a Variable's
+    grad list. It reconstructs the gradient Variable from the provided dictionary,
+    retrieves the target Variable from the local registry, and appends the gradient
+    using the Variable's append_grad() method.
+
+    Args:
+        variable_id (str): The unique identifier of the Variable to update.
+        grad (dict): A dictionary representing the serialized gradient Variable.
+
+    Raises:
+        RuntimeError: If the Variable cannot be found in the registry or if appending
+            the gradient fails.
+    """
+    from afnio._variable import Variable
+
+    var = get_variable(variable_id)
+
+    try:
+        gradient = Variable(**grad)
+        var.append_grad(gradient)
+    except RuntimeError:
+        raise RuntimeError(
+            f"Failed to append gradient for variable with ID '{variable_id}'."
+        )
+
+
 def clear_pending_grad(variable_ids: Optional[List[str]] = []):
     """
     Clear the `_pending_grad` flag for specified Variable instances.

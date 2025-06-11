@@ -340,11 +340,80 @@ class TestServerToClientVariableSync:
 
         return _mock
 
+    @pytest.fixture
+    def mock_server_append_grad_request(self):
+        """
+        Fixture to simulate receiving an 'append_grad' RPC call from the server.
+
+        Usage:
+            mock_server_append_grad_request(variable_id, field, value)
+        """
+
+        def _mock(variable_id, gradient):
+
+            # Compose the JSON-RPC message
+            message = json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "append_grad",
+                    "params": {
+                        "variable_id": variable_id,
+                        "gradient": gradient,
+                    },
+                    "id": "test-id-123",
+                }
+            )
+
+            # Patch the connection to use a fake async send
+            class FakeConnection:
+                def __init__(self):
+                    self.sent_messages = []
+                    self._closed = False
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    if hasattr(self, "_sent"):
+                        self._closed = True
+                        raise StopAsyncIteration
+                    self._sent = True
+                    return message
+
+                async def send(self, msg):
+                    self.sent_messages.append(msg)
+
+                @property
+                def closed(self):
+                    return self._closed
+
+            # Create a fresh client instance (no singleton)
+            ws_client = TellurioWebSocketClient()
+            ws_client.connection = FakeConnection()
+
+            # Patch send to track calls
+            with patch.object(
+                ws_client.connection, "send", new_callable=AsyncMock
+            ) as mock_send:
+                loop = asyncio.get_event_loop()
+                listener_task = loop.create_task(ws_client._listener())
+                loop.run_until_complete(asyncio.sleep(0.1))
+                listener_task.cancel()
+                try:
+                    loop.run_until_complete(listener_task)
+                except asyncio.CancelledError:
+                    pass
+
+                # Return the mock so the test can assert on it
+                return mock_send
+
+        return _mock
+
     @staticmethod
-    def assert_valid_update_variable_response(send_mock):
+    def assert_valid_client_response(send_mock):
         """
         Assert that the client sent a valid JSON-RPC response
-        to an update_variable request.
+        to an update_variable or append_grad request.
         """
         send_mock.assert_awaited()
         sent_msg = send_mock.call_args[0][0]
@@ -377,7 +446,7 @@ class TestServerToClientVariableSync:
         assert value == getattr(variable, field)
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_multiple_set_field_notification_order(
         self, variable, mock_server_update_variable_request
@@ -397,7 +466,7 @@ class TestServerToClientVariableSync:
             assert val == getattr(variable, "data")
 
             # Assert that the client sends the correct response to the server
-            self.assert_valid_update_variable_response(send_mock)
+            self.assert_valid_client_response(send_mock)
 
     def test_requires_grad_method_triggers_notification(
         self, variable, mock_server_update_variable_request
@@ -422,7 +491,7 @@ class TestServerToClientVariableSync:
             assert getattr(variable, field) == value
 
             # Assert that the client sends the correct response to the server
-            self.assert_valid_update_variable_response(send_mock)
+            self.assert_valid_client_response(send_mock)
 
     def test_set_output_nr_triggers_notification(
         self, variable, mock_server_update_variable_request
@@ -440,7 +509,7 @@ class TestServerToClientVariableSync:
         assert variable.output_nr == 3
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_set_grad_fn_triggers_notification(
         self, variable, mock_server_update_variable_request
@@ -465,7 +534,7 @@ class TestServerToClientVariableSync:
         assert variable.grad_fn.name() == "AddBackward"
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_set_grad_fn_raises_if_node_missing(
         self, variable, mock_server_update_variable_request
@@ -512,43 +581,38 @@ class TestServerToClientVariableSync:
         assert variable.grad[1].requires_grad is False
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_append_grad_triggers_notification(
-        self, variable, mock_server_update_variable_request
+        self, variable, mock_server_append_grad_request
     ):
         """
-        Test that the server calling `append_grad()` is reflected in the client.
-        We emulate the server call to `append_grad()` by directly sending the
-        notification to the client:
-          - `_grad` is set to a new value
+        Test that the server calling `append_grad()` is reflected in the client. We also
+        make sure that the grad list is the same object after appending gradients.
         """
+        grad_list_id = id(variable.grad)  # Get the ID of the grad list before appending
+
         # Server appends first gradient
-        value = [{"data": "gradient", "role": "grad_1", "requires_grad": False}]
-        send_mock = mock_server_update_variable_request(
-            variable.variable_id, "_grad", value
-        )
+        value = {"data": "gradient", "role": "grad_1", "requires_grad": False}
+        send_mock = mock_server_append_grad_request(variable.variable_id, value)
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 1
+        assert grad_list_id == id(variable.grad)
         assert variable.grad[0].data == "gradient"
         assert variable.grad[0].role == "grad_1"
         assert variable.grad[0].requires_grad is False
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
         # Server appends second gradient (new entire _grad list is sent)
-        value = [
-            {"data": "gradient", "role": "grad_1", "requires_grad": False},
-            {"data": "gradient", "role": "grad_2", "requires_grad": False},
-        ]
-        send_mock = mock_server_update_variable_request(
-            variable.variable_id, "_grad", value
-        )
+        value = {"data": "gradient", "role": "grad_2", "requires_grad": False}
+        send_mock = mock_server_append_grad_request(variable.variable_id, value)
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 2
+        assert grad_list_id == id(variable.grad)
         assert variable.grad[0].data == "gradient"
         assert variable.grad[0].role == "grad_1"
         assert variable.grad[0].requires_grad is False
@@ -557,7 +621,7 @@ class TestServerToClientVariableSync:
         assert variable.grad[1].requires_grad is False
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_retain_grad_method_triggers_notification(
         self, variable, mock_server_update_variable_request
@@ -581,7 +645,7 @@ class TestServerToClientVariableSync:
         assert variable._retain_grad is True
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_copy_method_triggers_notifications(
         self, variable, mock_server_update_variable_request
@@ -611,7 +675,7 @@ class TestServerToClientVariableSync:
         assert variable.requires_grad is False
 
         # Assert that the client sends the correct response to the server
-        self.assert_valid_update_variable_response(send_mock)
+        self.assert_valid_client_response(send_mock)
 
     def test_update_variable_raises_if_variable_missing(
         self, mock_server_update_variable_request
