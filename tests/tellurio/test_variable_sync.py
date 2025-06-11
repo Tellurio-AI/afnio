@@ -191,12 +191,17 @@ class TestClientToServerVariableSync:
         Test that appending gradients to a Variable using append_grad()
         triggers a notification to the client with the correct grad serialization.
         """
+        grad_list_id = id(variable.grad)  # Get the ID of the grad list before appending
+
         # Append first gradient
         grad_1 = hf.Variable(data="gradient", role="grad_1", requires_grad=False)
         variable.append_grad(grad_1)
 
         # Assert that the variable was updated locally
-        assert variable.grad == [grad_1]
+        # and the grad list ID remains the same
+        assert len(variable.grad) == 1
+        assert variable.grad[0].variable_id == grad_1.variable_id
+        assert grad_list_id == id(variable.grad)
 
         # Assert that the variable was updated on the server
         server_var = self.fetch_server_variable(variable.variable_id)
@@ -209,7 +214,11 @@ class TestClientToServerVariableSync:
         variable.append_grad(grad_2)
 
         # Assert that the variable was updated locally
-        assert variable.grad == [grad_1, grad_2]
+        # and the grad list ID remains the same
+        assert len(variable.grad) == 2
+        assert variable.grad[0].variable_id == grad_1.variable_id
+        assert variable.grad[1].variable_id == grad_2.variable_id
+        assert grad_list_id == id(variable.grad)
 
         # Assert that the variable was updated on the server
         server_var = self.fetch_server_variable(variable.variable_id)
