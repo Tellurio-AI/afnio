@@ -382,13 +382,57 @@ class Optimizer:
         param_groups = [update_group(g, ng) for g, ng in zip(groups, saved_groups)]
         self.__setstate__({"state": state, "param_groups": param_groups})
 
+    def _on_clear_grad(self):
+        """
+        Notify the server that all gradients for this optimizer are being cleared.
+
+        This method sends a 'clear_grad' RPC request to the server with the optimizer's
+        ID. It waits for the server to acknowledge the request and checks that the
+        response matches the optimizer's ID. If the server confirms, the method returns
+        normally; otherwise, it raises an error. This ensures that the server and client
+        remain synchronized regarding the clearing of gradients.
+
+        Raises:
+            RuntimeError: If the server response does not match the optimizer ID or if
+                the notification fails for any reason.
+        """
+        payload = {
+            "optimizer_id": self.optimizer_id,
+        }
+
+        try:
+            _, ws_client = get_default_client()
+            response = run_in_background_loop(ws_client.call("clear_grad", payload))
+
+            # Check server response
+            result_message = response.get("result", {}).get("message")
+            if result_message != "Gradients cleared successfully.":
+                logger.error(
+                    f"Server response mismatch: {response['result']!r} "
+                    f"(expected optimizer_id={self.optimizer_id!r}"
+                )
+                raise RuntimeError(
+                    "Failed to notify server of gradient clearing: "
+                    "server response does not match the update sent."
+                )
+            logger.debug(
+                f"Gradient clearing notified to server and confirmed: "
+                f"optimizer_id={self.optimizer_id!r}"
+            )
+
+        except Exception:
+            logger.exception(
+                f"Failed to notify server of gradient clearing: "
+                f"optimizer_id={self.optimizer_id!r}"
+            )
+            raise
+
     def clear_grad(self) -> None:
         """
         Resets the gradients of all optimized :class:`Variable` s by setting
         the `.grad` attribute of each parameter to an empty list.
         """
-        # TODO: Add a way to verify grads have been cleared on the server too,
-        #       before progressing with the next step
+        self._on_clear_grad()
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad:

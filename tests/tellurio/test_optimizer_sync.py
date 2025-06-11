@@ -116,7 +116,7 @@ class TestClientToServerOptimizerSync:
 
         assert parameter.data == "INITIAL VALUE"
 
-    def test_run_step_clear_pending_data(self, tgd_optimizer):
+    def test_run_step_clear_pending_data(self, monkeypatch):
         """
         Test that _pending_data is set during optimizer step
         and cleared after the update.
@@ -133,6 +133,9 @@ class TestClientToServerOptimizerSync:
         p_list = [param_1, param_2, param_3, param_4, param_5]
         for param in p_list:
             param.append_grad(gradient)
+
+        # Forcing consent to sharing API keys
+        monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
 
         # Create OpenAI model client and TGD optimizer
         api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
@@ -152,3 +155,26 @@ class TestClientToServerOptimizerSync:
             assert isinstance(param.data, str)
             assert param.data == param.data.upper()
             assert param._pending_data is False
+
+    def test_clear_grad(self, parameter, tgd_optimizer):
+        """
+        Test that clear_grad clears the gradients of the parameters and
+        does not create a new grad list object.
+        """
+        grad_list_id = id(parameter.grad)  # Get the ID of the grad list before clearing
+
+        # Append a gradient to the parameter
+        assert len(parameter.grad) == 0
+        gradient = Variable(data="Use only capital letters", role="gradient")
+        parameter.append_grad(gradient)
+
+        # Check initial gradient
+        assert len(parameter.grad) == 1
+        assert parameter.grad[0].data == "Use only capital letters"
+
+        # Clear gradients
+        tgd_optimizer.clear_grad()
+
+        # Check that gradients are cleared and the grad list object is the same
+        assert len(parameter.grad) == 0
+        assert grad_list_id == id(parameter.grad)
