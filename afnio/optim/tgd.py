@@ -1,15 +1,27 @@
+import logging
+import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from afnio._utils import (
     MultiTurnMessages,
+    _deserialize_output,
+    _serialize_arg,
 )
 from afnio._variable import Variable
+from afnio.logging_config import configure_logging
 from afnio.models import ChatCompletionModel
+from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import (
+    VARIABLE_REGISTRY,
     suppress_variable_notifications,
 )
+from afnio.tellurio.client import get_default_client
 
 from .optimizer import Optimizer, ParamsT
+
+# Configure logging
+configure_logging()
+logger = logging.getLogger(__name__)
 
 # Suppress notifications for variable changes during modules initialization
 # as the WebSocket connection is not established yet
@@ -143,7 +155,89 @@ def tgd(
 
     See :class:`~afnio.optim.SGD` for details.
     """
-    # TODO: implement funcitonal API for TGD
-    raise NotImplementedError(
-        "tgd is implemented on the server. Client-side execution is not supported."
+    # Set `_pending_data` for all parameters that will be optimized
+    for p in params:
+        p._pending_data = True
+        logger.debug(f"Marked variable {p.variable_id!r} as pending for data update.")
+
+    try:
+        _, ws_client = get_default_client()
+
+        payload = {
+            "params": _serialize_arg(params),
+            "grads": _serialize_arg(grads),
+            "momentum_buffer_list": _serialize_arg(momentum_buffer_list),
+            "model_client": _serialize_arg(model_client),
+            "messages": _serialize_arg(messages),
+            "inputs": _serialize_arg(inputs),
+            "constraints": _serialize_arg(constraints),
+            "momentum": momentum,
+            "completion_args": _serialize_arg(completion_args),
+        }
+
+        response = run_in_background_loop(ws_client.call("run_optimizer_tgd", payload))
+        logger.debug(f"TGD optimization request sent: {payload!r}")
+
+        result = response.get("result", {})
+        result_message = result.get("message")
+        result_momentum_buffer_list = result.get("momentum_buffer_list", [])
+
+        # Extract all variable_ids from the result_momentum_buffer_list
+        # and wait for them to be registered in VARIABLE_REGISTRY
+        all_var_ids = _extract_variable_ids(result_momentum_buffer_list)
+        for var_id in all_var_ids:
+            _wait_for_variable(var_id)
+
+        des_momentum_buffer_list = _deserialize_output(result_momentum_buffer_list)
+
+        if result_message != "Functional TGD optimization step executed successfully.":
+            logger.error(
+                f"Server did not return any data for functional TGD optimization: "
+                f"payload={payload!r}, response={response!r}"
+            )
+            raise RuntimeError(
+                "Failed to run functional TGD optimization: server did not return data."
+            )
+
+        # Update the momentum_buffer_list with the deserialized buffers
+        momentum_buffer_list.clear()
+        momentum_buffer_list.extend(des_momentum_buffer_list)
+
+        logger.debug("Functional TGD optimization executed successfully")
+    except Exception as e:
+        logger.error(f"Failed to run functional TGD optimization: {e!r}")
+        raise
+
+
+def _extract_variable_ids(obj):
+    """
+    Recursively extract variable_ids from a given object, which can be a dict or a list.
+    If the object is a dict, it checks for keys "__variable__" or "__parameter__"
+    and returns the value of "variable_id" if present. If the object is a list,
+    it recursively extracts variable_ids from each element.
+    If no variable_ids are found, it returns an empty list.
+    """
+    if isinstance(obj, dict):
+        if (
+            obj.get("__variable__") or obj.get("__parameter__")
+        ) and "variable_id" in obj:
+            return [obj["variable_id"]]
+        return sum([_extract_variable_ids(v) for v in obj.values()], [])
+    elif isinstance(obj, list):
+        return sum([_extract_variable_ids(v) for v in obj], [])
+    return []
+
+
+def _wait_for_variable(variable_id: str, timeout: float = 3, interval: float = 0.01):
+    """
+    Wait until a variable with the given variable_id is registered in VARIABLE_REGISTRY,
+    or raise TimeoutError after the specified timeout (in seconds).
+    """
+    end_time = time.monotonic() + timeout
+    while time.monotonic() < end_time:
+        if variable_id in VARIABLE_REGISTRY:
+            return VARIABLE_REGISTRY[variable_id]
+        time.sleep(0.01)
+    raise TimeoutError(
+        f"Variable with id {variable_id} not registered after {timeout} seconds"
     )

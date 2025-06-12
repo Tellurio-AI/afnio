@@ -578,9 +578,6 @@ class Variable:
         # Return a new Variable with the same role and requires_grad, but updated data
         return Variable(data=new_data, role=self.role, requires_grad=self.requires_grad)
 
-    # TODO: When we call `var.append_grad` or `var.grad.clear()`, we should notify the
-    #       server to preserve the same list of gradients such that pointers to the list
-    #       will remain valid.
     def _on_variable_change(self, field: str, value):
         """
         Notify the server of a change in the variable's attributes.

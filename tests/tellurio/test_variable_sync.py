@@ -528,7 +528,7 @@ class TestServerToClientVariableSync:
             ("__parameter__"),
         ],
     )
-    def test_new_create_variable(self, mock_server_create_variable_request, obj_type):
+    def test_create_variable(self, mock_server_create_variable_request, obj_type):
         """
         Test that a server's creation of a Variable is reflected in the client.
         """
