@@ -409,6 +409,105 @@ class TestServerToClientVariableSync:
 
         return _mock
 
+    @pytest.fixture
+    def mock_server_create_variable_request(self):
+        """
+        Fixture to simulate receiving a 'create_variable' RPC call from the server.
+
+        Usage:
+            mock_server_create_variable_request(
+                variable_id,
+                obj_type,
+                data,
+                role,
+                requires_grad,
+                _retain_grad,
+                _grad,
+                _output_nr,
+                _grad_fn,
+                is_leaf
+            )
+        """
+
+        def _mock(
+            variable_id,
+            obj_type,
+            data,
+            role,
+            requires_grad,
+            _retain_grad,
+            _grad,
+            _output_nr,
+            _grad_fn,
+            is_leaf,
+        ):
+
+            # Compose the JSON-RPC message
+            message = json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "create_variable",
+                    "params": {
+                        "variable_id": variable_id,
+                        "obj_type": obj_type,
+                        "data": data,
+                        "role": role,
+                        "requires_grad": requires_grad,
+                        "_retain_grad": _retain_grad,
+                        "_grad": _grad,
+                        "_output_nr": _output_nr,
+                        "_grad_fn": _grad_fn,
+                        "is_leaf": is_leaf,
+                    },
+                    "id": "test-id-123",
+                }
+            )
+
+            # Patch the connection to use a fake async send
+            class FakeConnection:
+                def __init__(self):
+                    self.sent_messages = []
+                    self._closed = False
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    if hasattr(self, "_sent"):
+                        self._closed = True
+                        raise StopAsyncIteration
+                    self._sent = True
+                    return message
+
+                async def send(self, msg):
+                    self.sent_messages.append(msg)
+
+                @property
+                def closed(self):
+                    return self._closed
+
+            # Create a fresh client instance (no singleton)
+            ws_client = TellurioWebSocketClient()
+            ws_client.connection = FakeConnection()
+
+            # Patch send to track calls
+            with patch.object(
+                ws_client.connection, "send", new_callable=AsyncMock
+            ) as mock_send:
+                loop = asyncio.get_event_loop()
+                listener_task = loop.create_task(ws_client._listener())
+                loop.run_until_complete(asyncio.sleep(0.1))
+                listener_task.cancel()
+                try:
+                    loop.run_until_complete(listener_task)
+                except asyncio.CancelledError:
+                    pass
+
+                # Return the mock so the test can assert on it
+                return mock_send
+
+        return _mock
+
     @staticmethod
     def assert_valid_client_response(send_mock):
         """
@@ -421,6 +520,38 @@ class TestServerToClientVariableSync:
         assert response["jsonrpc"] == "2.0"
         assert response["id"] == "test-id-123"
         assert response["result"]["message"] == "Ok"
+
+    @pytest.mark.parametrize(
+        "obj_type",
+        [
+            ("__variable__"),
+            ("__parameter__"),
+        ],
+    )
+    def test_new_create_variable(self, mock_server_create_variable_request, obj_type):
+        """
+        Test that a server's creation of a Variable is reflected in the client.
+        """
+        # Server creates a new variable
+        send_mock = mock_server_create_variable_request(
+            variable_id="var-123",
+            obj_type=obj_type,
+            data="Tellurio",
+            role="input variable",
+            requires_grad=True,
+            _retain_grad=False,
+            _grad=[],
+            _output_nr=0,
+            _grad_fn=None,
+            is_leaf=True,
+        )
+
+        # Assert that the variable was updated locally
+        var = VARIABLE_REGISTRY.get("var-123")
+        assert var.data == "Tellurio"
+
+        # Assert that the client sends the correct response to the server
+        self.assert_valid_client_response(send_mock)
 
     @pytest.mark.parametrize(
         "field,value",

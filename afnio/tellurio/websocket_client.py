@@ -19,6 +19,7 @@ from afnio.tellurio._variable_registry import (
     append_grad_local,
     clear_pending_data,
     clear_pending_grad,
+    create_local_variable,
     suppress_variable_notifications,
     update_local_variable_field,
 )
@@ -272,6 +273,60 @@ class TellurioWebSocketClient:
             await self.connect()  # Attempt to reconnect
         except Exception as e:
             logger.error(f"Unexpected error in listener: {e}")
+
+    async def rpc_create_variable(self, params):
+        """
+        Handle the 'create_variable' JSON-RPC method from the server.
+
+        This method creates and registers a new Variable instance in the local registry
+        using the provided parameters. It is typically called when the server creates a
+        deepcopy of a Variable or Parameter and needs to notify the client.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "variable_id": The unique identifier of the Variable.
+                - "obj_type": The type of the variable object
+                    (e.g., "__variable__" or "__parameter__").
+                - "data": The initial data for the variable.
+                - "role": The role or description of the variable.
+                - "requires_grad": Whether the variable requires gradients.
+                - "_retain_grad": Whether to retain gradients for non-leaf variables.
+                - "_grad": The initial gradient(s) for the variable.
+                - "_output_nr": The output number for the variable in the computation
+                    graph.
+                - "_grad_fn": The gradient function associated with the variable.
+                - "is_leaf": Whether the variable is a leaf node in the computation
+                    graph.
+
+        Returns:
+            dict: A dictionary with a success message if the variable is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If the variable creation fails for any reason.
+        """
+        try:
+            with suppress_variable_notifications():
+                var = create_local_variable(
+                    params["variable_id"],
+                    params["obj_type"],
+                    params["data"],
+                    params["role"],
+                    params["requires_grad"],
+                    params["_retain_grad"],
+                    params["_grad"],
+                    params["_output_nr"],
+                    params["_grad_fn"],
+                    params["is_leaf"],
+                )
+                logger.debug(f"Variable created: variable_id={var.variable_id!r}")
+                return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(f"Failed to create variable: {e}")
+            raise RuntimeError(f"Failed to create variable: {e}")
 
     async def rpc_update_variable(self, params):
         """
