@@ -92,12 +92,12 @@ class TestClientToServerTgdSync:
         assert len(momentum_buffer_list[0]) == 1
         assert momentum_buffer_list == [
             [
-                [
+                (
                     new_var,
                     [
                         grad_1,
                         grad_2,
                     ],
-                ],
+                ),
             ],
         ]

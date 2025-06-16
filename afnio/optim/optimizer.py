@@ -514,6 +514,18 @@ class Optimizer:
 
             des_result_state = _deserialize_state(result_state)
 
+            # Convert [param, grads] lists to (param, grads) tuples
+            for state in des_result_state.values():
+                if "momentum_buffer" in state:
+                    state["momentum_buffer"] = [
+                        (
+                            tuple(pair)
+                            if isinstance(pair, list) and len(pair) == 2
+                            else pair
+                        )
+                        for pair in state["momentum_buffer"]
+                    ]
+
             if result_message != "Optimizer step executed successfully.":
                 logger.error(
                     f"Server did not return any data for optimization operation: "

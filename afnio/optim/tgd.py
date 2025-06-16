@@ -21,6 +21,7 @@ from .optimizer import Optimizer, ParamsT, _extract_variable_ids, _wait_for_vari
 configure_logging()
 logger = logging.getLogger(__name__)
 
+
 # Suppress notifications for variable changes during modules initialization
 # as the WebSocket connection is not established yet
 with suppress_variable_notifications():
@@ -209,6 +210,13 @@ def tgd(
             _wait_for_variable(var_id)
 
         des_momentum_buffer_list = _deserialize_output(result_momentum_buffer_list)
+
+        # Convert [param, grads] lists to (param, grads) tuples
+        for i, buffer in enumerate(des_momentum_buffer_list):
+            des_momentum_buffer_list[i] = [
+                tuple(pair) if isinstance(pair, list) and len(pair) == 2 else pair
+                for pair in buffer
+            ]
 
         if result_message != "Functional TGD optimization step executed successfully.":
             logger.error(

@@ -9,6 +9,7 @@ from afnio.models.openai import AsyncOpenAI
 from afnio.optim import TGD
 from afnio.tellurio import login
 from afnio.tellurio._optimizer_registry import OPTIMIZER_REGISTRY
+from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
 
 
 @pytest.fixture
@@ -98,6 +99,9 @@ class TestClientToServerOptimizerSync:
         gradient = Variable(data="Use only capital letters", role="gradient")
         parameter.append_grad(gradient)
 
+        # Take a snapshot of variable objects before tgd()
+        before_vars = set(VARIABLE_REGISTRY.values())
+
         def closure():
             # Simulate a loss calculation
             return (
@@ -115,6 +119,22 @@ class TestClientToServerOptimizerSync:
         assert explanation.data == "Explanation"
 
         assert parameter.data == "INITIAL VALUE"
+
+        # Take a snapshot after tgd()
+        after_vars = set(VARIABLE_REGISTRY.values())
+        new_vars = after_vars - before_vars - {score, explanation}
+        new_var = next(iter(new_vars))
+
+        assert tgd_optimizer.state == {
+            parameter: {
+                "momentum_buffer": [
+                    (
+                        new_var,
+                        [gradient],
+                    )
+                ],
+            }
+        }
 
     def test_run_step_clear_pending_data(self, monkeypatch):
         """
