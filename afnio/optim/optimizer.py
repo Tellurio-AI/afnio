@@ -1,4 +1,5 @@
 import logging
+import time
 from collections import defaultdict
 from copy import deepcopy
 from itertools import chain
@@ -24,6 +25,7 @@ from afnio.models.model import BaseModel
 from afnio.models.model_registry import MODEL_REGISTRY
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._optimizer_registry import register_optimizer
+from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
 from afnio.tellurio.client import get_default_client
 
 StateDict: TypeAlias = Dict[str, Any]
@@ -500,7 +502,18 @@ class Optimizer:
                 f"optimizer_id={self.optimizer_id!r}"
             )
 
-            result_message = response.get("result", {}).get("message")
+            result = response.get("result", {})
+            result_message = result.get("message")
+            result_state = result.get("state", [])
+
+            # Extract all variable_ids from the result_state
+            # and wait for them to be registered in VARIABLE_REGISTRY
+            all_var_ids = self._extract_variable_ids_from_state(result_state)
+            for var_id in all_var_ids:
+                _wait_for_variable(var_id)
+
+            des_result_state = _deserialize_state(result_state)
+
             if result_message != "Optimizer step executed successfully.":
                 logger.error(
                     f"Server did not return any data for optimization operation: "
@@ -509,6 +522,8 @@ class Optimizer:
                 raise RuntimeError(
                     "Failed to run optimization: server did not return data."
                 )
+
+            self.state = des_result_state
 
             logger.debug(
                 f"Optimization executed successfully: "
@@ -562,4 +577,65 @@ class Optimizer:
             logger.error(f"Failed to add param group to the optimizer: {e}")
             raise
 
-    # TODO: Implement `_on_optimizer_change` like done for `_on_variable_change`
+    def _extract_variable_ids_from_state(self):
+        raise NotImplementedError
+
+    # TODO: Implement `_on_optimizer_change` like done for `_on_variable_change`.
+    #       This is useful for example to modify dynamically the `momentum` value:
+    #       >>> for param_group in optimizer.param_groups:
+    #       ...    param_group['momentum'] = new_lr
+
+
+def _deserialize_state(
+    state: list,
+) -> DefaultDict[Variable, Any]:
+    """
+    Deserialize a state list (as produced by the server's _serialize_optimizer)
+    into a DefaultDict mapping Variables to their state.
+
+    Args:
+        state (list): A list of dicts, each with "key" and "value" fields.
+
+    Returns:
+        DefaultDict[Variable, Any]: A DefaultDict mapping Variables to their state.
+    """
+    deserialized_state = defaultdict(dict)
+    for item in state:
+        key = _deserialize_output(item.get("key"))
+        value = _deserialize_output(item.get("value"))
+        deserialized_state[key] = value
+    return deserialized_state
+
+
+def _extract_variable_ids(obj):
+    """
+    Recursively extract variable_ids from a given object, which can be a dict or a list.
+    If the object is a dict, it checks for keys "__variable__" or "__parameter__"
+    and returns the value of "variable_id" if present. If the object is a list,
+    it recursively extracts variable_ids from each element.
+    If no variable_ids are found, it returns an empty list.
+    """
+    if isinstance(obj, dict):
+        if (
+            obj.get("__variable__") or obj.get("__parameter__")
+        ) and "variable_id" in obj:
+            return [obj["variable_id"]]
+        return sum([_extract_variable_ids(v) for v in obj.values()], [])
+    elif isinstance(obj, list):
+        return sum([_extract_variable_ids(v) for v in obj], [])
+    return []
+
+
+def _wait_for_variable(variable_id: str, timeout: float = 3, interval: float = 0.01):
+    """
+    Wait until a variable with the given variable_id is registered in VARIABLE_REGISTRY,
+    or raise TimeoutError after the specified timeout (in seconds).
+    """
+    end_time = time.monotonic() + timeout
+    while time.monotonic() < end_time:
+        if variable_id in VARIABLE_REGISTRY:
+            return VARIABLE_REGISTRY[variable_id]
+        time.sleep(0.01)
+    raise TimeoutError(
+        f"Variable with id {variable_id} not registered after {timeout} seconds"
+    )

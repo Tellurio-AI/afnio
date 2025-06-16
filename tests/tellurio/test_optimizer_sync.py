@@ -147,7 +147,9 @@ class TestClientToServerOptimizerSync:
 
         # The parameters should have _pending_data set before clear_step
         for param in p_list:
-            assert param._pending_data is True
+            assert (
+                param._pending_data is True
+            )  # This rarely fails (when server is too fast)
 
         # We are only able to read `param.data` when we exit `_wait_for_pending()`
         # and at that point, _pending_data should be False

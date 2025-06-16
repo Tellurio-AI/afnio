@@ -96,6 +96,7 @@ def create_local_variable(
         TypeError: If an unsupported object type is provided.
         RuntimeError: If required attributes are missing or registration fails.
     """
+    from afnio._utils import _deserialize_output
     from afnio._variable import Variable, _allow_grad_fn_assignment
     from afnio.cognitive.parameter import Parameter
 
@@ -119,14 +120,15 @@ def create_local_variable(
             )
 
         var._retain_grad = _retain_grad
-        var.grad = _grad
+        var.grad = [_deserialize_output(g) for g in _grad]
         var.output_nr = _output_nr
 
         # Assign grad_fun if the Node is already registered,
         # otherwise register for later
         grad_fn_node = get_node(_grad_fn)
         with _allow_grad_fn_assignment():
-            var.grad_fn = grad_fn_node
+            if var.requires_grad:
+                var.grad_fn = grad_fn_node
         var._pending_grad_fn_id = None
 
         var.is_leaf = is_leaf

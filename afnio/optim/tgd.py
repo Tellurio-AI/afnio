@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from afnio._utils import (
@@ -12,12 +11,11 @@ from afnio.logging_config import configure_logging
 from afnio.models import ChatCompletionModel
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import (
-    VARIABLE_REGISTRY,
     suppress_variable_notifications,
 )
 from afnio.tellurio.client import get_default_client
 
-from .optimizer import Optimizer, ParamsT
+from .optimizer import Optimizer, ParamsT, _extract_variable_ids, _wait_for_variable
 
 # Configure logging
 configure_logging()
@@ -132,10 +130,32 @@ class TGD(Optimizer):
                 a textual explanation, both wrapped as `Variable` objects
         """
         loss = closure() if closure else (None, None)
-
         super().step()
-
         return loss
+
+    def _extract_variable_ids_from_state(self, state):
+        """
+        Extract only the variable_ids of deepcopied parameters (i.e., those generated
+        on the server) from the optimizer state.
+
+        Args:
+            state (list): The serialized optimizer state as returned by the server.
+
+        Returns:
+            Set[str]: Set of variable_ids for deepcopied parameters.
+        """
+        var_ids = set()
+        for entry in state:
+            momentum_buffer = entry.get("value", {}).get("momentum_buffer", [])
+            for buf_entry in momentum_buffer:
+                if (
+                    isinstance(buf_entry, list)
+                    and len(buf_entry) > 0
+                    and isinstance(buf_entry[0], dict)
+                    and "variable_id" in buf_entry[0]
+                ):
+                    var_ids.add(buf_entry[0]["variable_id"])
+        return var_ids
 
 
 # TODO: Fix error when passing str constraints
@@ -207,37 +227,3 @@ def tgd(
     except Exception as e:
         logger.error(f"Failed to run functional TGD optimization: {e!r}")
         raise
-
-
-def _extract_variable_ids(obj):
-    """
-    Recursively extract variable_ids from a given object, which can be a dict or a list.
-    If the object is a dict, it checks for keys "__variable__" or "__parameter__"
-    and returns the value of "variable_id" if present. If the object is a list,
-    it recursively extracts variable_ids from each element.
-    If no variable_ids are found, it returns an empty list.
-    """
-    if isinstance(obj, dict):
-        if (
-            obj.get("__variable__") or obj.get("__parameter__")
-        ) and "variable_id" in obj:
-            return [obj["variable_id"]]
-        return sum([_extract_variable_ids(v) for v in obj.values()], [])
-    elif isinstance(obj, list):
-        return sum([_extract_variable_ids(v) for v in obj], [])
-    return []
-
-
-def _wait_for_variable(variable_id: str, timeout: float = 3, interval: float = 0.01):
-    """
-    Wait until a variable with the given variable_id is registered in VARIABLE_REGISTRY,
-    or raise TimeoutError after the specified timeout (in seconds).
-    """
-    end_time = time.monotonic() + timeout
-    while time.monotonic() < end_time:
-        if variable_id in VARIABLE_REGISTRY:
-            return VARIABLE_REGISTRY[variable_id]
-        time.sleep(0.01)
-    raise TimeoutError(
-        f"Variable with id {variable_id} not registered after {timeout} seconds"
-    )

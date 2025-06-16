@@ -23,7 +23,8 @@ class TestClientToServerTgdSync:
 
     def test_run_optimizer_tgd(self, monkeypatch):
         """
-        Test that running a functional TGD optimizer step with multiple parameters works correctly.
+        Test that running a functional TGD optimizer step with multiple parameters
+        works correctly.
         """
         # Clear VARIABLE_REGISTRY to ensure a clean state
         # when searching for the new deepcopied parameters

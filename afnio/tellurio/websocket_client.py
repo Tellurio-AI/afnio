@@ -306,21 +306,20 @@ class TellurioWebSocketClient:
             RuntimeError: If the variable creation fails for any reason.
         """
         try:
-            with suppress_variable_notifications():
-                var = create_local_variable(
-                    params["variable_id"],
-                    params["obj_type"],
-                    params["data"],
-                    params["role"],
-                    params["requires_grad"],
-                    params["_retain_grad"],
-                    params["_grad"],
-                    params["_output_nr"],
-                    params["_grad_fn"],
-                    params["is_leaf"],
-                )
-                logger.debug(f"Variable created: variable_id={var.variable_id!r}")
-                return {"message": "Ok"}
+            var = create_local_variable(
+                params["variable_id"],
+                params["obj_type"],
+                params["data"],
+                params["role"],
+                params["requires_grad"],
+                params["_retain_grad"],
+                params["_grad"],
+                params["_output_nr"],
+                params["_grad_fn"],
+                params["is_leaf"],
+            )
+            logger.debug(f"Variable created: variable_id={var.variable_id!r}")
+            return {"message": "Ok"}
         except KeyError as e:
             logger.error(f"Missing key in params: {e}")
             raise KeyError(f"Missing key: {e}")
