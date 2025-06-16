@@ -177,7 +177,7 @@ cython_debug/
 .vscode/
 
 # Data folder
-data/
+/data/
 
 # Temporary folder
 tmp/
