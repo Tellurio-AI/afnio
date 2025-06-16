@@ -16,6 +16,10 @@ from afnio.tellurio._node_registry import (
     create_node,
 )
 from afnio.tellurio._variable_registry import (
+    append_grad_local,
+    clear_pending_data,
+    clear_pending_grad,
+    create_local_variable,
     suppress_variable_notifications,
     update_local_variable_field,
 )
@@ -270,6 +274,59 @@ class TellurioWebSocketClient:
         except Exception as e:
             logger.error(f"Unexpected error in listener: {e}")
 
+    async def rpc_create_variable(self, params):
+        """
+        Handle the 'create_variable' JSON-RPC method from the server.
+
+        This method creates and registers a new Variable instance in the local registry
+        using the provided parameters. It is typically called when the server creates a
+        deepcopy of a Variable or Parameter and needs to notify the client.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "variable_id": The unique identifier of the Variable.
+                - "obj_type": The type of the variable object
+                    (e.g., "__variable__" or "__parameter__").
+                - "data": The initial data for the variable.
+                - "role": The role or description of the variable.
+                - "requires_grad": Whether the variable requires gradients.
+                - "_retain_grad": Whether to retain gradients for non-leaf variables.
+                - "_grad": The initial gradient(s) for the variable.
+                - "_output_nr": The output number for the variable in the computation
+                    graph.
+                - "_grad_fn": The gradient function associated with the variable.
+                - "is_leaf": Whether the variable is a leaf node in the computation
+                    graph.
+
+        Returns:
+            dict: A dictionary with a success message if the variable is created.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If the variable creation fails for any reason.
+        """
+        try:
+            var = create_local_variable(
+                params["variable_id"],
+                params["obj_type"],
+                params["data"],
+                params["role"],
+                params["requires_grad"],
+                params["_retain_grad"],
+                params["_grad"],
+                params["_output_nr"],
+                params["_grad_fn"],
+                params["is_leaf"],
+            )
+            logger.debug(f"Variable created: variable_id={var.variable_id!r}")
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(f"Failed to create variable: {e}")
+            raise RuntimeError(f"Failed to create variable: {e}")
+
     async def rpc_update_variable(self, params):
         """
         Handle the 'update_variable' JSON-RPC method from the server.
@@ -310,6 +367,48 @@ class TellurioWebSocketClient:
             )
             raise RuntimeError(
                 f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+
+    async def rpc_append_grad(self, params):
+        """
+        Handle the 'append_grad' JSON-RPC method from the server.
+
+        This method appends a new gradient variable to the local grad list of the
+        specified Variable instance. It is typically called when the server notifies
+        the client that a new gradient has been added to a variable during
+        the backward pass.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "variable_id": The unique identifier of the Variable to update.
+                - "gradient": The serialized gradient Variable to append.
+
+        Returns:
+            dict: A dictionary with a success message if the gradient is appended.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If appending the gradient fails for any reason.
+        """
+        try:
+            with suppress_variable_notifications():
+                append_grad_local(params["variable_id"], params["gradient"])
+                logger.debug(
+                    f"Gradient appended: variable_id={params['variable_id']!r} "
+                    f"gradient={params['gradient']!r}"
+                )
+                return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to append gradient for variable with ID "
+                f"{params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to append gradient for variable with ID "
+                f"{params.get('variable_id')!r}: {e}"
             )
 
     async def rpc_create_node(self, params):
@@ -490,6 +589,85 @@ class TellurioWebSocketClient:
                 f"Exception during execution of callable "
                 f"with ID {params.get('callable_id')!r}: {e}"
             )
+
+    async def rpc_clear_backward(self, params):
+        """
+        Handle the 'clear_backward' JSON-RPC method from the server.
+
+        This method clears the `_pending_grad` flag for the specified variables.
+        It is called after the server finalizes the backward pass for the entire
+        computation graph, indicating that the gradients for its variables have been
+        computed and already shared with the client. Once it receives 'clear_backward',
+        the client can safely access the values of these gradients without worrying
+        about them being modified.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "variable_ids": A list of variable IDs for which to clear
+                    the `_pending_grad` flag.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If clearing the pending grad fails for any variable.
+        """
+        try:
+            variable_ids = params["variable_ids"]
+            clear_pending_grad(variable_ids)
+
+            logger.debug(f"Cleared pending gradients for variables: {variable_ids!r}")
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Exception during execution of backward clearing: {e}")
+            raise RuntimeError(f"Exception during execution of backward clearing: {e}")
+
+    async def rpc_clear_step(self, params):
+        """
+        Handle the 'clear_step' JSON-RPC method from the server.
+
+        This method clears the `_pending_data` flag for the specified variables.
+        It is called after the server completes an optimizer step and updates
+        the data for the relevant variables. Once 'clear_step' is received,
+        the client can safely access the updated values of these variables,
+        knowing that the data is no longer pending or being modified.
+
+        Args:
+            params (dict): A dictionary containing:
+                - "variable_ids": A list of variable IDs (str) for which to clear
+                  the `_pending_data` flag.
+
+        Raises:
+            KeyError: If required keys are missing from params.
+            RuntimeError: If clearing the pending data fails for any variable.
+        """
+        try:
+            variable_ids = params["variable_ids"]
+            clear_pending_data(variable_ids)
+
+            logger.debug(f"Cleared pending data for variables: {variable_ids!r}")
+            return {"message": "Ok"}
+        except KeyError as e:
+            logger.error(f"Missing key in params: {e}")
+            raise KeyError(f"Missing key: {e}")
+        except RuntimeError as e:
+            logger.error(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+            raise RuntimeError(
+                f"Failed to update variable with ID {params.get('variable_id')!r}: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Exception during execution of backward clearing: {e}")
+            raise RuntimeError(f"Exception during execution of backward clearing: {e}")
 
     async def call(self, method: str, params: dict, timeout=None) -> dict:
         """

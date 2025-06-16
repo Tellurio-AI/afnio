@@ -45,7 +45,7 @@ class GradientEdge(NamedTuple):
     """Object representing a given gradient edge within the autodiff graph.
 
     To get the gradient edge where a given Variable gradient will be computed,
-    you can do ``edge = autodiff.graph.get_gradient_edge(tensor)``.
+    you can do ``edge = autodiff.graph.get_gradient_edge(variable)``.
     """
 
     node: Node

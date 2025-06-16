@@ -1,7 +1,9 @@
 import logging
 from typing import Any, Tuple
 
-from afnio.autodiff.utils import deserialize_output, serialize_arg
+from afnio._utils import _serialize_arg
+from afnio.autodiff.grad_mode import is_grad_enabled
+from afnio.autodiff.utils import _deserialize_fn_output
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio.client import get_default_client
@@ -62,7 +64,7 @@ class Function:
                 pass
 
         - It must accept a context ctx as the first argument, followed by any
-          number of arguments (tensors or other types).
+          number of arguments (variables or other types).
 
         Usage 2 (Separate forward and ctx)::
 
@@ -121,7 +123,7 @@ class Function:
         corresponding input. If an input is not a Variable or is a Variable not
         requiring grads, you can just pass None as a gradient for that input.
 
-        The context can be used to retrieve tensors saved during the forward
+        The context can be used to retrieve variables saved during the forward
         pass. It also has an attribute :attr:`ctx.needs_input_grad` as a tuple
         of booleans representing whether each input needs gradient. E.g.,
         :func:`backward` will have ``ctx.needs_input_grad[0] = True`` if the
@@ -144,8 +146,8 @@ class Function:
         # Serialize the function and arguments
         function_name = cls.__name__
 
-        serialized_args = [serialize_arg(a) for a in args]
-        serialized_kwargs = {k: serialize_arg(v) for k, v in kwargs.items()}
+        serialized_args = [_serialize_arg(a) for a in args]
+        serialized_kwargs = {k: _serialize_arg(v) for k, v in kwargs.items()}
 
         # Send the RPC call to the server
         try:
@@ -154,6 +156,7 @@ class Function:
 
             payload = {
                 "function_name": function_name,
+                "grad_enabled": is_grad_enabled(),
                 "args": serialized_args,
                 "kwargs": serialized_kwargs,
             }
@@ -171,7 +174,7 @@ class Function:
                     "Failed to run function forward pass: server did not return data."
                 )
 
-            return deserialize_output(result_data)
+            return _deserialize_fn_output(result_data)
 
         except Exception as e:
             logger.error(f"Failed to share function with the server: {e}")

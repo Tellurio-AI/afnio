@@ -1,9 +1,6 @@
-import uuid
 from typing import Any, Optional, Sequence, Union
 
 from afnio._variable import Variable, _allow_grad_fn_assignment
-from afnio.models import ChatCompletionModel
-from afnio.tellurio._callable_registry import register_callable
 from afnio.tellurio._node_registry import get_node
 from afnio.tellurio._variable_registry import (
     PENDING_GRAD_FN_ASSIGNMENTS,
@@ -23,56 +20,10 @@ _VariableOrVariablesOrGradEdge = Union[
 ]
 
 
-def serialize_arg(arg: Any) -> Any:
+def _deserialize_fn_output(obj: Any) -> Any:
     """
-    Recursively serialize an argument for RPC transmission.
-
-    Handles:
-    - Variable: serializes as a dict with a type tag and variable_id.
-    - ChatCompletionModel: serializes as a dict with a type tag and model_id.
-    - Callable: registers the callable and serializes as a dict with a type tag
-      and callable_id.
-    - list/tuple: recursively serializes each element.
-    - dict: recursively serializes each value.
-    - Primitives (str, int, float, bool, None): returned as-is.
-
-    Callables are not currently supported and will raise if encountered.
-    """
-    if isinstance(arg, Variable):
-        return {
-            "__variable__": True,
-            "variable_id": arg.variable_id,
-        }
-    elif isinstance(arg, ChatCompletionModel):
-        return {
-            "__model_client__": True,
-            "model_id": arg.model_id,
-        }
-    elif callable(arg):
-        # Register the callable and generate a unique ID
-        callable_id = str(uuid.uuid4())
-        register_callable(callable_id, arg)
-        return {
-            "__callable__": True,
-            "callable_id": callable_id,
-        }
-    elif isinstance(arg, list):
-        return [serialize_arg(a) for a in arg]
-    elif isinstance(arg, tuple):
-        return tuple(serialize_arg(a) for a in arg)
-    elif isinstance(arg, dict):
-        return {k: serialize_arg(v) for k, v in arg.items()}
-    elif isinstance(arg, (str, int, float, bool)) or arg is None:
-        return arg
-    else:
-        raise TypeError(
-            f"Cannot serialize object of type {type(arg).__name__}: {arg!r}"
-        )
-
-
-def deserialize_output(obj: Any) -> Any:
-    """
-    Recursively deserialize an object returned from the server.
+    Recursively deserialize a `Function.forward` response object
+    returned from the server.
 
     Handles:
     - Variable: dict with variable_id and data, creates and registers a Variable.
@@ -113,7 +64,7 @@ def deserialize_output(obj: Any) -> Any:
         register_variable(var)
         return var
     elif isinstance(obj, list):
-        variables = tuple(deserialize_output(a) for a in obj)
+        variables = tuple(_deserialize_fn_output(a) for a in obj)
         return variables
     else:
         raise TypeError(

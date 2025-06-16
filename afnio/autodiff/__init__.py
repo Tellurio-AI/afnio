@@ -2,23 +2,23 @@
 import logging
 from typing import Optional
 
+from afnio._utils import _serialize_arg
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import get_variable
 from afnio.tellurio.client import get_default_client
 
-# from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
+from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
 from .utils import (
     _VariableOrVariables,
     _VariableOrVariablesOrGradEdge,
-    serialize_arg,
 )
 
 __all__ = [
     "backward",
-    # "is_grad_enabled",
-    # "no_grad",
-    # "set_grad_enabled",
+    "is_grad_enabled",
+    "no_grad",
+    "set_grad_enabled",
 ]
 
 # Please keep this list sorted
@@ -89,11 +89,11 @@ def backward(
     """
 
     # Serialize the arguments
-    serialized_variables = serialize_arg(variables)
-    serialized_grad_variables = serialize_arg(grad_variables)
-    serialized_retain_graph = serialize_arg(retain_graph)
-    serialized_create_graph = serialize_arg(create_graph)
-    serialized_inputs = serialize_arg(inputs)
+    serialized_variables = _serialize_arg(variables)
+    serialized_grad_variables = _serialize_arg(grad_variables)
+    serialized_retain_graph = _serialize_arg(retain_graph)
+    serialized_create_graph = _serialize_arg(create_graph)
+    serialized_inputs = _serialize_arg(inputs)
 
     # Send the RPC call to the server
     try:
@@ -111,7 +111,7 @@ def backward(
         )
 
         result_ids = response_ids.get("result", {})
-        backprop_variable_ids = result_ids.get("backprop_variable_ids", [])
+        backprop_variable_ids = result_ids.get("variable_ids", [])
         if backprop_variable_ids:
             for var_id in backprop_variable_ids:
                 var = get_variable(var_id)

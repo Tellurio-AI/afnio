@@ -1,10 +1,11 @@
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from afnio.tellurio._node_registry import get_node
 
 if TYPE_CHECKING:
     from afnio import Variable
+    from afnio.cognitive.parameter import Parameter
 
 
 # _SUPPRESS_NOTIFICATIONS is a module-level flag that controls whether variable change
@@ -52,6 +53,94 @@ def get_variable(variable_id: str) -> Optional["Variable"]:
     return VARIABLE_REGISTRY.get(variable_id)
 
 
+def create_local_variable(
+    variable_id: str,
+    obj_type: str,
+    data,
+    role: str,
+    requires_grad: bool,
+    _retain_grad: bool,
+    _grad: list,
+    _output_nr: int,
+    _grad_fn,
+    is_leaf: bool,
+) -> Optional[Union["Variable", "Parameter"]]:
+    """
+    Create and register a local Variable or Parameter instance from server-provided
+    data.
+
+    This function reconstructs a Variable or Parameter object using the provided
+    attributes, sets its internal state (including gradients, output number, grad_fn,
+    and leaf status), and registers it in the local VARIABLE_REGISTRY. It is typically
+    called in response to a server notification indicating that a new variable has been
+    created as a result of a deepcopy operation.
+
+    Args:
+        variable_id (str): The unique identifier for the variable.
+        obj_type (str): The type of object to create
+            ("__variable__" or "__parameter__").
+        data: The initial data for the variable.
+        role (str): The role or description of the variable.
+        requires_grad (bool): Whether the variable requires gradients.
+        _retain_grad (bool): Whether to retain gradients for non-leaf variables.
+        _grad (list): The initial gradients for the variable.
+        _output_nr (int): The output number for the variable in the computation graph.
+        _grad_fn: The gradient function node associated with the variable.
+        is_leaf (bool): Whether the variable is a leaf node in the computation graph.
+
+    Returns:
+        Variable or Parameter: The created and registered Variable
+            or Parameter instance.
+
+    Raises:
+        TypeError: If an unsupported object type is provided.
+        RuntimeError: If required attributes are missing or registration fails.
+    """
+    from afnio._utils import _deserialize_output
+    from afnio._variable import Variable, _allow_grad_fn_assignment
+    from afnio.cognitive.parameter import Parameter
+
+    with suppress_variable_notifications():
+        if obj_type == "__parameter__":
+            var = Parameter(
+                data=data,
+                role=role,
+                requires_grad=requires_grad,
+            )
+        elif obj_type == "__variable__":
+            var = Variable(
+                data=data,
+                role=role,
+                requires_grad=requires_grad,
+            )
+        else:
+            raise TypeError(
+                f"Unsupported object type '{obj_type}' "
+                f"for Variable or Parameter creation."
+            )
+
+        var._retain_grad = _retain_grad
+        var.grad = [_deserialize_output(g) for g in _grad]
+        var.output_nr = _output_nr
+
+        # Assign grad_fun if the Node is already registered,
+        # otherwise register for later
+        grad_fn_node = get_node(_grad_fn)
+        with _allow_grad_fn_assignment():
+            if var.requires_grad:
+                var.grad_fn = grad_fn_node
+        var._pending_grad_fn_id = None
+
+        var.is_leaf = is_leaf
+
+    # When Variable is created on the server
+    # we must handle local Variable registration manually
+    var.variable_id = variable_id
+    var._initialized = True
+    register_variable(var)
+    return var
+
+
 def update_local_variable_field(variable_id: str, field: str, value):
     """
     Update a specific field of a registered Variable instance as a consequence of a
@@ -72,7 +161,6 @@ def update_local_variable_field(variable_id: str, field: str, value):
             from afnio._variable import Variable
 
             var.grad = [Variable(**g) for g in value] if value else []
-            var._pending_grad = False  # Reset _pending_grad flag
         elif field == "_output_nr":
             var.output_nr = value
         elif field == "_grad_fn":
@@ -89,6 +177,71 @@ def update_local_variable_field(variable_id: str, field: str, value):
         raise RuntimeError(
             f"Failed to update field '{field}' for variable with ID '{variable_id}'."
         )
+
+
+def append_grad_local(variable_id: str, grad: dict):
+    """
+    Append a gradient to the local Variable instance identified by variable_id.
+
+    This function is typically called in response to a server notification (e.g., via
+    an RPC method) indicating that a new gradient should be appended to a Variable's
+    grad list. It reconstructs the gradient Variable from the provided dictionary,
+    retrieves the target Variable from the local registry, and appends the gradient
+    using the Variable's append_grad() method.
+
+    Args:
+        variable_id (str): The unique identifier of the Variable to update.
+        grad (dict): A dictionary representing the serialized gradient Variable.
+
+    Raises:
+        RuntimeError: If the Variable cannot be found in the registry or if appending
+            the gradient fails.
+    """
+    from afnio._variable import Variable
+
+    var = get_variable(variable_id)
+
+    try:
+        gradient = Variable(**grad)
+        var.append_grad(gradient)
+    except RuntimeError:
+        raise RuntimeError(
+            f"Failed to append gradient for variable with ID '{variable_id}'."
+        )
+
+
+def clear_pending_grad(variable_ids: Optional[List[str]] = []):
+    """
+    Clear the `_pending_grad` flag for specified Variable instances.
+
+    This function is used to reset the `_pending_grad` flag for Variables that are
+    waiting for their gradients to be computed during a backward pass on the server.
+
+    Args:
+        variable_ids (Optional[List[str]]): List of variable IDs to clear.
+    """
+    for var_id in variable_ids:
+        var = get_variable(var_id)
+        if var is None:
+            raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
+        var._pending_grad = False
+
+
+def clear_pending_data(variable_ids: Optional[List[str]] = []):
+    """
+    Clear the `_pending_data` flag for specified Variable instances.
+
+    This function is used to reset the `_pending_data` flag for Variables that are
+    waiting for their data to be computed during an optimization step on the server.
+
+    Args:
+        variable_ids (Optional[List[str]]): List of variable IDs to clear.
+    """
+    for var_id in variable_ids:
+        var = get_variable(var_id)
+        if var is None:
+            raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
+        var._pending_data = False
 
 
 @contextmanager

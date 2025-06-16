@@ -71,7 +71,7 @@ class Variable:
         >>> a = hf.Variable("abc", requires_grad=True)
         >>> a.is_leaf
         True
-        >>> b = torch.rand("abc", requires_grad=True).upper()
+        >>> b = hf.Variable("abc", requires_grad=True).upper()
         >>> b.is_leaf
         False
         # b was created by the operation that converts all string characters to uppercase
@@ -92,6 +92,7 @@ class Variable:
     _initialized: bool
     _pending_grad_fn_id: Optional[str]
     _pending_grad: Optional[bool]
+    _pending_data: Optional[bool]
 
     def __init__(
         self,
@@ -130,10 +131,11 @@ class Variable:
         # Websocket attributes
         self.variable_id = None
         self._initialized = False  # Falgs variable is ready to send websocket updates
-        self._pending_grad_fn_id = None  # Flags variable has pending grad_fn to be set
-        self._pending_grad = False  # Flags variable has pending grad to be set
+        self._pending_grad_fn_id = None  # Flags grad_fn is being set (fwd pass running)
+        self._pending_grad = False  # Flags grad is being set (bwd pass running)
+        self._pending_data = False  # Flags data is being set (optim step running)
         # Internal attributes
-        self.data = data
+        self._data = data
         self.role = role
         self.requires_grad = requires_grad
         self._retain_grad = False
@@ -145,6 +147,8 @@ class Variable:
         # Share the variable with the websocket server
         if not is_variable_notify_suppressed():
             try:
+                from afnio.cognitive.parameter import Parameter
+
                 # Get the singleton websocket client
                 _, ws_client = get_default_client()
 
@@ -152,6 +156,11 @@ class Variable:
                     "data": self.data,
                     "role": self.role,
                     "requires_grad": self.requires_grad,
+                    "obj_type": (
+                        "__parameter__"
+                        if isinstance(self, Parameter)
+                        else "__variable__"
+                    ),
                 }
                 response = run_in_background_loop(
                     ws_client.call("create_variable", payload)
@@ -293,11 +302,11 @@ class Variable:
         :func:`requires_grad_`'s main use case is to tell autodiff to begin recording
         operations on a Variable ``variable``. If ``variable`` has
         ``requires_grad=False`` (because it was obtained through a DataLoader, or
-        required preprocessing or initialization), ``tensor.requires_grad_()`` makes
-        it so that autodiff will begin to record operations on ``tensor``.
+        required preprocessing or initialization), ``variable.requires_grad_()`` makes
+        it so that autodiff will begin to record operations on ``variable``.
 
         Args:
-            requires_grad (bool): If autodiff should record operations on this tensor.
+            requires_grad (bool): If autodiff should record operations on this variable.
                 Default: ``True``.
 
         Example:
@@ -318,6 +327,17 @@ class Variable:
         self.requires_grad = mode
         self.is_leaf = not self.requires_grad or self.grad_fn is None
         return self
+
+    @property
+    def data(self):
+        self._wait_for_pending(
+            "_pending_data"
+        )  # Wait until the pending flag is cleared
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
 
     @property
     def output_nr(self) -> int:
@@ -410,8 +430,8 @@ class Variable:
         Appends a gradient value to the list ``.grad`` for this variable.
         """
         if self.is_leaf or self._retain_grad:
+            self._on_append_grad(gradient)
             self._grad.append(gradient)
-            self._on_variable_change("_grad", gradient)
         else:
             # Throwing a `UserWarning`` instead of `RuntimeError` could do here, like
             # in Pytorch, but for now I cannot think of any use case for not throwing
@@ -567,7 +587,14 @@ class Variable:
         Args:
             field (str): The name of the field that changed.
             value: The new value of the field.
+
+        Raises:
+            RuntimeError: If the variable is not registered with the server or if the
+                server response does not match the request.
+            TypeError: If the provided value is of an unexpected type for the field.
         """
+        from afnio._utils import _serialize_arg
+
         if is_variable_notify_suppressed():
             return  # Do not notify server
 
@@ -585,24 +612,22 @@ class Variable:
             "_initialized",
             "_pending_grad_fn_id",
             "_pending_grad",
+            "_pending_data",
         }:
             # Do not notify for the property setter, as we already notify
             # for all the changes made inside the property setter.
             # Also do not notify for `_initialized` and pending states
             return
+        elif field == "_data":
+            field = "data"  # `data` is a property only on the client
+            end_value = value
         elif field == "_grad":
-            grad_value = self.grad
-            if grad_value:
-                end_value = [
-                    {
-                        "data": getattr(g, "data", ""),
-                        "role": getattr(g, "role", ""),
-                        "requires_grad": getattr(g, "requires_grad", None),
-                    }
-                    for g in grad_value
-                ]
-            else:
-                end_value = []
+            if not isinstance(value, list):
+                raise TypeError(
+                    f"Expected `value` to be a list for field '{field}', "
+                    f"but got {type(value).__name__}."
+                )
+            end_value = [_serialize_arg(g) for g in value]
         elif field == "_grad_fn":
             raise RuntimeError(
                 "Setting `grad_fn` is only allowed on the server by the autodiff "
@@ -648,10 +673,79 @@ class Variable:
             )
             raise
 
+    def _on_append_grad(self, gradient: "Variable"):
+        """
+        Notify the server that a new gradient has been appended to this variable.
+
+        This method is called before the gradient is added to the local `.grad` list.
+        It sends an 'append_grad' RPC request to the server, including the variable's
+        ID and the serialized gradient. The method blocks until the server acknowledges
+        the append operation, ensuring synchronization between client and server.
+
+        Args:
+            gradient (Variable): The gradient variable to append.
+
+        Raises:
+            RuntimeError: If the variable is not registered with the server or if the
+                server response does not match the request.
+            TypeError: If the provided gradient is not a Variable.
+        """
+        from afnio._utils import _serialize_arg
+
+        if is_variable_notify_suppressed():
+            return  # Do not notify server
+
+        if self.variable_id is None:
+            logger.error(
+                f"Cannot notify server: variable_id=None, gradient={gradient!r}"
+            )
+            raise RuntimeError("Cannot notify server: variable_id is None.")
+
+        if not isinstance(gradient, Variable):
+            raise TypeError(
+                f"Expected `value` to be a Variable, but got {type(gradient).__name__}."
+            )
+
+        ser_grad = _serialize_arg(gradient)
+
+        payload = {
+            "variable_id": self.variable_id,
+            "gradient": ser_grad,
+        }
+
+        try:
+            _, ws_client = get_default_client()
+            response = run_in_background_loop(ws_client.call("append_grad", payload))
+            # Check server response
+            if (
+                response["result"]["variable_id"] != self.variable_id
+                or response["result"]["gradient_id"] != gradient.variable_id
+            ):
+                logger.error(
+                    f"Server response mismatch: {response['result']!r} "
+                    f"(expected variable_id={self.variable_id!r}, gradient={ser_grad!r}"
+                )
+                raise RuntimeError(
+                    "Failed to notify server of gradient append: "
+                    "server response does not match the update sent."
+                )
+            logger.debug(
+                f"Gradient append notified to server and confirmed: "
+                f"variable_id={self.variable_id!r}, gradient={ser_grad!r}"
+            )
+
+        except Exception:
+            logger.exception(
+                f"Failed to notify server of gradient append: "
+                f"variable_id={self.variable_id!r}, gradient={ser_grad!r}"
+            )
+            raise
+
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
         if getattr(self, "_initialized", False):
             self._on_variable_change(name, value)
+        # TODO: Should we handle the else condition and throw an error?
 
     def _wait_for_pending(
         self, attr_name: str, timeout: float = 3, interval: float = 0.01
