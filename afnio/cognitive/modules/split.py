@@ -1,9 +1,7 @@
 from typing import List, Optional, Union
 
-from afnio._utils import _validate_typed_sequence
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Split as SplitOp
-from afnio.autodiff.utils import _validate_variable_sequence
 
 from .module import Module
 
@@ -59,8 +57,6 @@ class Split(Module):
         sep: Optional[Union[str, Variable]] = None,
         maxsplit: Optional[Union[int, Variable]] = -1,
     ) -> List[Variable]:
-        _validate_variable_sequence(x)
-        _validate_typed_sequence(x.data, str, allow_single=True)
         self.sep = (
             None
             if sep is None
