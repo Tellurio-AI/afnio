@@ -349,7 +349,7 @@ class TestServerToClientVariableSync:
             mock_server_append_grad_request(variable_id, field, value)
         """
 
-        def _mock(variable_id, gradient):
+        def _mock(variable_id, gradient_id, gradient):
 
             # Compose the JSON-RPC message
             message = json.dumps(
@@ -358,6 +358,7 @@ class TestServerToClientVariableSync:
                     "method": "append_grad",
                     "params": {
                         "variable_id": variable_id,
+                        "gradient_id": gradient_id,
                         "gradient": gradient,
                     },
                     "id": "test-id-123",
@@ -725,7 +726,9 @@ class TestServerToClientVariableSync:
 
         # Server appends first gradient
         value = {"data": "gradient", "role": "grad_1", "requires_grad": False}
-        send_mock = mock_server_append_grad_request(variable.variable_id, value)
+        send_mock = mock_server_append_grad_request(
+            variable.variable_id, "grad_123", value
+        )
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 1
@@ -739,7 +742,9 @@ class TestServerToClientVariableSync:
 
         # Server appends second gradient (new entire _grad list is sent)
         value = {"data": "gradient", "role": "grad_2", "requires_grad": False}
-        send_mock = mock_server_append_grad_request(variable.variable_id, value)
+        send_mock = mock_server_append_grad_request(
+            variable.variable_id, "grad_456", value
+        )
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 2

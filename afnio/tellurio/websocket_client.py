@@ -392,7 +392,9 @@ class TellurioWebSocketClient:
         """
         try:
             with suppress_variable_notifications():
-                append_grad_local(params["variable_id"], params["gradient"])
+                append_grad_local(
+                    params["variable_id"], params["gradient_id"], params["gradient"]
+                )
                 logger.debug(
                     f"Gradient appended: variable_id={params['variable_id']!r} "
                     f"gradient={params['gradient']!r}"

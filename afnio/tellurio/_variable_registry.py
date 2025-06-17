@@ -179,18 +179,22 @@ def update_local_variable_field(variable_id: str, field: str, value):
         )
 
 
-def append_grad_local(variable_id: str, grad: dict):
+def append_grad_local(variable_id: str, gradient_id: str, grad: dict):
     """
-    Append a gradient to the local Variable instance identified by variable_id.
+    Append and register a gradient to the local Variable instance identified
+    by variable_id, using the provided gradient data.
 
     This function is typically called in response to a server notification (e.g., via
     an RPC method) indicating that a new gradient should be appended to a Variable's
     grad list. It reconstructs the gradient Variable from the provided dictionary,
     retrieves the target Variable from the local registry, and appends the gradient
-    using the Variable's append_grad() method.
+    using the Variable's append_grad() method. It also ensures that the
+    gradient Variable is registered in the local VARIABLE_REGISTRY.
 
     Args:
         variable_id (str): The unique identifier of the Variable to update.
+        gradient_id (str): The unique identifier for the gradient Variable being
+            appended.
         grad (dict): A dictionary representing the serialized gradient Variable.
 
     Raises:
@@ -208,6 +212,12 @@ def append_grad_local(variable_id: str, grad: dict):
         raise RuntimeError(
             f"Failed to append gradient for variable with ID '{variable_id}'."
         )
+
+    # When gradient Variable is created and appended on the server
+    # we must handle local Variable registration manually
+    gradient.variable_id = gradient_id
+    gradient._initialized = True
+    register_variable(gradient)
 
 
 def clear_pending_grad(variable_ids: Optional[List[str]] = []):
