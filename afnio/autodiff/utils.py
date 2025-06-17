@@ -1,4 +1,4 @@
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Sequence, Union
 
 from afnio._variable import Variable, _allow_grad_fn_assignment
 from afnio.tellurio._node_registry import get_node
@@ -10,7 +10,6 @@ from afnio.tellurio._variable_registry import (
 
 from .graph import GradientEdge
 
-_OptionalVariable = Optional[Variable]
 _VariableOrVariables = Union[Variable, Sequence[Variable]]
 _VariableOrVariablesOrGradEdge = Union[
     Variable,
