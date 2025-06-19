@@ -1,5 +1,9 @@
+import atexit
 import logging
 import os
+import sys
+import threading
+import traceback
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -95,7 +99,11 @@ class Run:
             f"project={self.project.display_name if self.project else None}>"
         )
 
-    def finish(self, client: Optional[TellurioClient] = None):
+    def finish(
+        self,
+        client: Optional[TellurioClient] = None,
+        status: Optional[RunStatus] = RunStatus.COMPLETED,
+    ):
         """
         Marks the run as COMPLETED on the server by sending a PATCH request,
         and clears the active run UUID.
@@ -117,20 +125,23 @@ class Run:
             raise ValueError("Run object is missing required identifiers.")
 
         endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/{run_uuid}/"
-        payload = {"status": RunStatus.COMPLETED.value}
+        payload = {"status": status.value}
 
         try:
             response = client.patch(endpoint, json=payload)
             if response.status_code == 200:
-                self.status = RunStatus.COMPLETED
-                logger.info(f"Run {self.name!r} marked as COMPLETED.")
+                self.status = status
+                if not _IN_ATEXIT:
+                    logger.info(f"Run {self.name!r} marked as COMPLETED.")
             else:
-                logger.error(
-                    f"Failed to update run status: {response.status_code} - {response.text}"  # noqa: E501
-                )
+                if not _IN_ATEXIT:
+                    logger.error(
+                        f"Failed to update run status: {response.status_code} - {response.text}"  # noqa: E501
+                    )
                 response.raise_for_status()
         except Exception as e:
-            logger.error(f"An error occurred while updating the run status: {e}")
+            if not _IN_ATEXIT:
+                logger.error(f"An error occurred while updating the run status: {e}")
             raise
 
         # Clear the active run UUID after finishing
@@ -139,11 +150,15 @@ class Run:
         except Exception:
             pass
 
+        # Mark safeguard as finished
+        _unregister_safeguard(self)
+
     def __enter__(self):
         """
         Enter the runtime context related to this object.
         Returns self so it can be used as a context manager.
         """
+        _register_safeguard(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -151,9 +166,8 @@ class Run:
         Exit the runtime context and finish the run.
         If an exception occurred, you may want to set status to CRASHED in the future.
         """
-        self.finish()
-
-    # TODO: If any error happens we should update the run status to CRASHED; Also the server side should implement this
+        status = RunStatus.CRASHED if exc_type else RunStatus.COMPLETED
+        self.finish(status=status)
 
 
 def init(
@@ -279,6 +293,7 @@ def init(
                 user=user_obj,
             )
             set_active_run_uuid(run.uuid)
+            _register_safeguard(run)
             return run
         else:
             logger.error(
@@ -288,3 +303,74 @@ def init(
     except Exception as e:
         logger.error(f"An error occurred while creating the run: {e}")
         raise
+
+
+# Safeguard system for finishing the active run
+_safeguard_lock = threading.RLock()  # Using `RLock` for re-entrant locking in pytests
+_safeguard_run = None
+_safeguard_finished = False
+_safeguard_registered = False
+
+# Flag to indicate if we are in the atexit handler
+# This is used to prevent loggging during the atexit handler,
+# which typically result in `ValueError: I/O operation on closed file.`
+_IN_ATEXIT = False
+
+
+def _finish_active_run_on_exit():
+    global _IN_ATEXIT
+    _IN_ATEXIT = True
+    try:
+        global _safeguard_finished
+        with _safeguard_lock:
+            if _safeguard_run and not _safeguard_finished:
+                exc_type, exc_val, exc_tb = sys.exc_info()
+                if exc_type is not None:
+                    # There was an unhandled exception
+                    try:
+                        _safeguard_run.finish(status=RunStatus.CRASHED)
+                    except Exception:
+                        logger.error(
+                            "Failed to mark run as CRASHED on exit:\n"
+                            + traceback.format_exc()
+                        )
+                else:
+                    try:
+                        _safeguard_run.finish(status=RunStatus.COMPLETED)
+                    except Exception:
+                        logger.error(
+                            "Failed to mark run as COMPLETED on exit:\n"
+                            + traceback.format_exc()
+                        )
+                _safeguard_finished = True
+    finally:
+        _IN_ATEXIT = False
+
+
+def _register_safeguard(run):
+    global _safeguard_run, _safeguard_finished, _safeguard_registered
+    with _safeguard_lock:
+        # If there is an unfinished previous run, mark it as FAILED
+        if _safeguard_run and not _safeguard_finished and _safeguard_run is not run:
+            try:
+                _safeguard_run.finish(status=RunStatus.FAILED)
+            except Exception:
+                logger.error(
+                    "Failed to mark previous run as FAILED when starting a new run:\n"
+                    + traceback.format_exc()
+                )
+            finally:
+                set_active_run_uuid(run.uuid)
+        _safeguard_run = run
+        _safeguard_finished = False
+        if not _safeguard_registered:
+            atexit.register(_finish_active_run_on_exit)
+            _safeguard_registered = True
+
+
+def _unregister_safeguard(run):
+    global _safeguard_run, _safeguard_finished
+    with _safeguard_lock:
+        if _safeguard_run is run:
+            _safeguard_finished = True
+            _safeguard_run = None

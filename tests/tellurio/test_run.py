@@ -6,6 +6,8 @@ import httpx
 import pytest
 from slugify import slugify
 
+import afnio.tellurio.client as client_mod
+from afnio.tellurio import run as run_mod
 from afnio.tellurio.project import Project, get_project
 from afnio.tellurio.run import Run, RunStatus, init
 from afnio.tellurio.run_context import get_active_run_uuid
@@ -16,6 +18,21 @@ TEST_ORG_SLUG = os.getenv("TEST_ORG_SLUG", "tellurio-test")
 TEST_PROJECT = os.getenv("TEST_PROJECT", "Test Project")
 
 NON_EXISTING_PROJECT = "Non Existing Project"
+
+
+def get_run_status_from_server(client, namespace_slug, project_slug, run_uuid):
+    """
+    Helper function to get the status of a run from the server.
+    Raises an AssertionError if the run is not found.
+    """
+    endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/"
+    response = client.get(endpoint)
+    assert response.status_code == 200
+    runs = response.json()
+    for run in runs:
+        if run["uuid"] == run_uuid:
+            return run["status"]
+    raise AssertionError(f"Run {run_uuid} not found on server.")
 
 
 def test_init_run_in_existing_project(client, create_and_delete_project):
@@ -238,3 +255,108 @@ def test_run_finish_idempotent(client, create_and_delete_project):
     # Call finish again; should not raise
     run.finish(client=client)
     assert run.status == RunStatus.COMPLETED
+
+
+def test_run_auto_finish_on_exit(client):
+    """
+    Test that an unfinished run is automatically finished as COMPLETED at exit.
+    """
+    # Override the global default client for all code (including atexit)
+    client_mod._default_client = client
+
+    namespace_slug = TEST_ORG_SLUG
+    project_display_name = TEST_PROJECT
+    project_slug = slugify(project_display_name)
+
+    run = init(
+        namespace_slug,
+        project_display_name,
+        name="AutoFinishTest",
+        client=client,
+    )
+    run_uuid = run.uuid
+
+    # Simulate script exit
+    run_mod._finish_active_run_on_exit()
+
+    # Check the run status from the server and the local run object
+    status = get_run_status_from_server(client, namespace_slug, project_slug, run_uuid)
+    assert status == RunStatus.COMPLETED.value
+    assert run.status.value == RunStatus.COMPLETED.value
+
+
+def test_run_auto_fail_previous_on_new_init(client):
+    """
+    Test that starting a new run auto-finishes the previous unfinished run as FAILED.
+    """
+    # Override the global default client for all code (including atexit)
+    client_mod._default_client = client
+
+    namespace_slug = TEST_ORG_SLUG
+    project_display_name = TEST_PROJECT
+    project_slug = slugify(project_display_name)
+
+    run1 = init(
+        namespace_slug, project_display_name, name="AutoFailTest1", client=client
+    )
+    run1_uuid = run1.uuid
+
+    run2 = init(
+        namespace_slug, project_display_name, name="AutoFailTest2", client=client
+    )
+    run2_uuid = run2.uuid
+
+    # Check the run status from the server and the local run object
+    status1 = get_run_status_from_server(
+        client, namespace_slug, project_slug, run1_uuid
+    )
+    status2 = get_run_status_from_server(
+        client, namespace_slug, project_slug, run2_uuid
+    )
+    assert status1 == RunStatus.FAILED.value
+    # run2 is still active, so its status should be RUNNING
+    assert status2 == RunStatus.RUNNING.value
+    assert run1.status.value == RunStatus.FAILED.value
+    assert run2.status.value == RunStatus.RUNNING.value
+
+
+def test_run_context_manager_completed_and_failed(client):
+    """
+    Test that a run used as a context manager is finished as COMPLETED if no error,
+    and as FAILED if an exception occurs.
+    """
+    # Override the global default client for all code (including atexit)
+    client_mod._default_client = client
+
+    namespace_slug = "tellurio-test"
+    project_display_name = "Test Project"
+    project_slug = slugify(project_display_name)
+
+    # COMPLETED case
+    with init(
+        namespace_slug, project_display_name, name="ContextCompletedTest", client=client
+    ) as run:
+        run_uuid = run.uuid
+
+    # Check the run status from the server and the local run object
+    status = get_run_status_from_server(client, namespace_slug, project_slug, run_uuid)
+    assert status == RunStatus.COMPLETED.value
+    assert run.status.value == RunStatus.COMPLETED.value
+
+    # FAILED case
+    try:
+        with init(
+            namespace_slug,
+            project_display_name,
+            name="ContextFailedTest",
+            client=client,
+        ) as run:
+            run_uuid = run.uuid
+            raise RuntimeError("Test crash")
+    except RuntimeError:
+        pass
+
+    # Check the run status from the server and the local run object
+    status = get_run_status_from_server(client, namespace_slug, project_slug, run_uuid)
+    assert status == RunStatus.CRASHED.value
+    assert run.status.value == RunStatus.CRASHED.value
