@@ -1,5 +1,9 @@
+import atexit
 import logging
 import os
+import sys
+import threading
+import traceback
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -22,6 +26,16 @@ class RunStatus(Enum):
     CRASHED = "CRASHED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
+
+class RunOrg:
+    """Represents a Tellurio Run Organization."""
+
+    def __init__(self, slug: str):
+        self.slug = slug
+
+    def __repr__(self):
+        return f"<Organization slug={self.slug}>"
 
 
 class RunProject:
@@ -65,6 +79,7 @@ class Run:
         status: RunStatus,
         date_created: Optional[datetime] = None,
         date_updated: Optional[datetime] = None,
+        organization: Optional[RunOrg] = None,
         project: Optional[RunProject] = None,
         user: Optional[RunUser] = None,
     ):
@@ -74,6 +89,7 @@ class Run:
         self.status = RunStatus(status)
         self.date_created = date_created
         self.date_updated = date_updated
+        self.organization = organization
         self.project = project
         self.user = user
 
@@ -82,6 +98,76 @@ class Run:
             f"<Run uuid={self.uuid} name={self.name} status={self.status} "
             f"project={self.project.display_name if self.project else None}>"
         )
+
+    def finish(
+        self,
+        client: Optional[TellurioClient] = None,
+        status: Optional[RunStatus] = RunStatus.COMPLETED,
+    ):
+        """
+        Marks the run as COMPLETED on the server by sending a PATCH request,
+        and clears the active run UUID.
+
+        Args:
+            client (TellurioClient, optional): The client to use for the request.
+                If not provided, the default client will be used.
+
+        Raises:
+            Exception: If the PATCH request fails.
+        """
+        client = client or get_default_client()[0]
+
+        namespace_slug = self.organization.slug if self.organization else None
+        project_slug = self.project.slug if self.project else None
+        run_uuid = self.uuid
+
+        if not (namespace_slug and project_slug and run_uuid):
+            raise ValueError("Run object is missing required identifiers.")
+
+        endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/{run_uuid}/"
+        payload = {"status": status.value}
+
+        try:
+            response = client.patch(endpoint, json=payload)
+            if response.status_code == 200:
+                self.status = status
+                if not _IN_ATEXIT:
+                    logger.info(f"Run {self.name!r} marked as COMPLETED.")
+            else:
+                if not _IN_ATEXIT:
+                    logger.error(
+                        f"Failed to update run status: {response.status_code} - {response.text}"  # noqa: E501
+                    )
+                response.raise_for_status()
+        except Exception as e:
+            if not _IN_ATEXIT:
+                logger.error(f"An error occurred while updating the run status: {e}")
+            raise
+
+        # Clear the active run UUID after finishing
+        try:
+            set_active_run_uuid(None)
+        except Exception:
+            pass
+
+        # Mark safeguard as finished
+        _unregister_safeguard(self)
+
+    def __enter__(self):
+        """
+        Enter the runtime context related to this object.
+        Returns self so it can be used as a context manager.
+        """
+        _register_safeguard(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit the runtime context and finish the run.
+        If an exception occurred, you may want to set status to CRASHED in the future.
+        """
+        status = RunStatus.CRASHED if exc_type else RunStatus.COMPLETED
+        self.finish(status=status)
 
 
 def init(
@@ -124,22 +210,26 @@ def init(
             project_slug=project_slug,
             client=client,
         )
-        logger.info(
-            f"Project with slug {project_slug!r} already exists "
-            f"in namespace {namespace_slug!r}."
-        )
-    except Exception:
-        logger.info(
-            f"Project with slug {project_slug!r} does not exist "
-            f"in namespace {namespace_slug!r}. "
-            f"Creating it now with RESTRICTED visibility."
-        )
-        project_obj = create_project(
-            namespace_slug=namespace_slug,
-            display_name=project_display_name,
-            visibility="RESTRICTED",
-            client=client,
-        )
+        if project_obj is not None:
+            logger.info(
+                f"Project with slug {project_slug!r} already exists "
+                f"in namespace {namespace_slug!r}."
+            )
+        else:
+            logger.info(
+                f"Project with slug {project_slug!r} does not exist "
+                f"in namespace {namespace_slug!r}. "
+                f"Creating it now with RESTRICTED visibility."
+            )
+            project_obj = create_project(
+                namespace_slug=namespace_slug,
+                display_name=project_display_name,
+                visibility="RESTRICTED",
+                client=client,
+            )
+    except Exception as e:
+        logger.error(f"An error occurred while retrieving or creating the project: {e}")
+        raise
 
     # Dynamically construct the payload to exclude None values
     payload = {}
@@ -176,6 +266,9 @@ def init(
             )
 
             # Parse project and user fields
+            org_obj = RunOrg(
+                slug=namespace_slug,
+            )
             project_obj = RunProject(
                 uuid=data["project"]["uuid"],
                 display_name=data["project"]["display_name"],
@@ -195,10 +288,12 @@ def init(
                 status=RunStatus(data["status"]),
                 date_created=date_created,
                 date_updated=date_updated,
+                organization=org_obj,
                 project=project_obj,
                 user=user_obj,
             )
             set_active_run_uuid(run.uuid)
+            _register_safeguard(run)
             return run
         else:
             logger.error(
@@ -208,3 +303,74 @@ def init(
     except Exception as e:
         logger.error(f"An error occurred while creating the run: {e}")
         raise
+
+
+# Safeguard system for finishing the active run
+_safeguard_lock = threading.RLock()  # Using `RLock` for re-entrant locking in pytests
+_safeguard_run = None
+_safeguard_finished = False
+_safeguard_registered = False
+
+# Flag to indicate if we are in the atexit handler
+# This is used to prevent loggging during the atexit handler,
+# which typically result in `ValueError: I/O operation on closed file.`
+_IN_ATEXIT = False
+
+
+def _finish_active_run_on_exit():
+    global _IN_ATEXIT
+    _IN_ATEXIT = True
+    try:
+        global _safeguard_finished
+        with _safeguard_lock:
+            if _safeguard_run and not _safeguard_finished:
+                exc_type, exc_val, exc_tb = sys.exc_info()
+                if exc_type is not None:
+                    # There was an unhandled exception
+                    try:
+                        _safeguard_run.finish(status=RunStatus.CRASHED)
+                    except Exception:
+                        logger.error(
+                            "Failed to mark run as CRASHED on exit:\n"
+                            + traceback.format_exc()
+                        )
+                else:
+                    try:
+                        _safeguard_run.finish(status=RunStatus.COMPLETED)
+                    except Exception:
+                        logger.error(
+                            "Failed to mark run as COMPLETED on exit:\n"
+                            + traceback.format_exc()
+                        )
+                _safeguard_finished = True
+    finally:
+        _IN_ATEXIT = False
+
+
+def _register_safeguard(run):
+    global _safeguard_run, _safeguard_finished, _safeguard_registered
+    with _safeguard_lock:
+        # If there is an unfinished previous run, mark it as FAILED
+        if _safeguard_run and not _safeguard_finished and _safeguard_run is not run:
+            try:
+                _safeguard_run.finish(status=RunStatus.FAILED)
+            except Exception:
+                logger.error(
+                    "Failed to mark previous run as FAILED when starting a new run:\n"
+                    + traceback.format_exc()
+                )
+            finally:
+                set_active_run_uuid(run.uuid)
+        _safeguard_run = run
+        _safeguard_finished = False
+        if not _safeguard_registered:
+            atexit.register(_finish_active_run_on_exit)
+            _safeguard_registered = True
+
+
+def _unregister_safeguard(run):
+    global _safeguard_run, _safeguard_finished
+    with _safeguard_lock:
+        if _safeguard_run is run:
+            _safeguard_finished = True
+            _safeguard_run = None

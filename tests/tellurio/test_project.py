@@ -93,12 +93,12 @@ def test_get_project_with_various_inputs(
         assert project.org_display_name is None
         assert project.org_slug is None
     else:
-        with pytest.raises(httpx.HTTPStatusError):
-            get_project(
-                namespace_slug=namespace_slug,
-                project_slug=slugify(project_slug),
-                client=client,
-            )
+        project = get_project(
+            namespace_slug=namespace_slug,
+            project_slug=slugify(project_slug),
+            client=client,
+        )
+        assert project is None
 
 
 @pytest.mark.parametrize(
@@ -128,12 +128,12 @@ def test_delete_project_with_various_inputs(
         mark_deleted()
 
         # Verify the project no longer exists
-        with pytest.raises(httpx.HTTPStatusError):
-            get_project(
-                namespace_slug=namespace_slug,
-                project_slug=project.slug,
-                client=client,
-            )
+        project = get_project(
+            namespace_slug=namespace_slug,
+            project_slug=project.slug,
+            client=client,
+        )
+        assert project is None
     else:
         with pytest.raises(httpx.HTTPStatusError):
             delete_project(
