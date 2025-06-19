@@ -47,7 +47,7 @@ def get_project(
     namespace_slug: str,
     project_slug: str,
     client: Optional[TellurioClient] = None,
-) -> Project:
+) -> Optional[Project]:
     """
     Retrieves a project by its slug in the specified namespace.
 
@@ -59,7 +59,11 @@ def get_project(
           provided, the default client will be used.
 
     Returns:
-        Project: A Project object representing the retrieved project.
+        Project: A Project object representing the retrieved project
+            or None if not found.
+
+    Raises:
+        Exception: If an unexpected error occurs during the request.
     """
     client = client or get_default_client()[0]
 
@@ -96,6 +100,12 @@ def get_project(
                 org_display_name=data.get("org_display_name"),
                 org_slug=data.get("org_slug"),
             )
+        elif response.status_code == 404:
+            logger.debug(
+                f"Project with slug '{project_slug}' "
+                f"not found in namespace '{namespace_slug}'."
+            )
+            return None
         else:
             logger.error(
                 f"Failed to retrieve project: {response.status_code} - {response.text}"

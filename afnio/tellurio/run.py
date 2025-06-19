@@ -182,22 +182,26 @@ def init(
             project_slug=project_slug,
             client=client,
         )
-        logger.info(
-            f"Project with slug {project_slug!r} already exists "
-            f"in namespace {namespace_slug!r}."
-        )
-    except Exception:
-        logger.info(
-            f"Project with slug {project_slug!r} does not exist "
-            f"in namespace {namespace_slug!r}. "
-            f"Creating it now with RESTRICTED visibility."
-        )
-        project_obj = create_project(
-            namespace_slug=namespace_slug,
-            display_name=project_display_name,
-            visibility="RESTRICTED",
-            client=client,
-        )
+        if project_obj is not None:
+            logger.info(
+                f"Project with slug {project_slug!r} already exists "
+                f"in namespace {namespace_slug!r}."
+            )
+        else:
+            logger.info(
+                f"Project with slug {project_slug!r} does not exist "
+                f"in namespace {namespace_slug!r}. "
+                f"Creating it now with RESTRICTED visibility."
+            )
+            project_obj = create_project(
+                namespace_slug=namespace_slug,
+                display_name=project_display_name,
+                visibility="RESTRICTED",
+                client=client,
+            )
+    except Exception as e:
+        logger.error(f"An error occurred while retrieving or creating the project: {e}")
+        raise
 
     # Dynamically construct the payload to exclude None values
     payload = {}
