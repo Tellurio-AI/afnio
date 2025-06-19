@@ -1,23 +1,30 @@
 import os
 
 import pytest
-import pytest_asyncio
 
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split
 from afnio.autodiff.evaluator import DeterministicEvaluator
 from afnio.autodiff.grad_mode import no_grad
 from afnio.tellurio import login
+from afnio.tellurio.run import init
 
 
-@pytest_asyncio.fixture(autouse=True)
-async def login_fixture():
+@pytest.fixture(autouse=True)
+def login_and_ensure_default_run():
     """
-    Test the login function with real HTTP and WebSocket connections.
+    Test the login function with real HTTP and WebSocket connections and
+    ensure a default Run exists and is set as active before tests.
     """
+    # Log in to the Tellurio service using the API key
     api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
     login(api_key=api_key)
-    api_key = api_key
+
+    # Use your test org/project names from env or defaults
+    namespace_slug = os.getenv("TEST_ORG_SLUG", "tellurio-test")
+    project_display_name = os.getenv("TEST_PROJECT", "Test Project")
+    run = init(namespace_slug, project_display_name)
+    return run
 
 
 @pytest.fixture

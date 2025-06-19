@@ -8,6 +8,7 @@ from slugify import slugify
 
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import create_project, get_project
+from afnio.tellurio.run_context import set_active_run_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ def init(
     Returns:
         Run: A Run object representing the created run.
     """
-    client = client or get_default_client()
+    client = client or get_default_client()[0]
 
     # Generate the project's slug from its name
     project_slug = slugify(project_display_name)
@@ -187,7 +188,7 @@ def init(
             )
 
             # Create and return the Run object
-            return Run(
+            run = Run(
                 uuid=data["uuid"],
                 name=data["name"],
                 description=data["description"],
@@ -197,6 +198,8 @@ def init(
                 project=project_obj,
                 user=user_obj,
             )
+            set_active_run_uuid(run.uuid)
+            return run
         else:
             logger.error(
                 f"Failed to create run: {response.status_code} - {response.text}"

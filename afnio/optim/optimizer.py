@@ -73,6 +73,7 @@ class Optimizer:
             # Get the singleton websocket client
             _, ws_client = get_default_client()
 
+            params = list(params)
             payload = {
                 "optimizer_name": child_class,
                 "params": _serialize_arg(params),

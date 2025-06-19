@@ -3,11 +3,12 @@ import tempfile
 from typing import List
 
 import pytest
+from slugify import slugify
 
 from afnio.tellurio import utils as tellurio_utils
 from afnio.tellurio._eventloop import _event_loop_thread
 from afnio.tellurio.client import TellurioClient, get_default_client
-from afnio.tellurio.project import Project, create_project, delete_project
+from afnio.tellurio.project import Project, create_project, delete_project, get_project
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
 TEST_ORG_SLUG = os.getenv("TEST_ORG_SLUG", "tellurio-test")
@@ -91,6 +92,30 @@ def delete_project_fixture(client):
             project_slug=project.slug,
             client=client,
         )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_test_project(client):
+    """
+    Fixture to ensure TEST_PROJECT does not exist before each module.
+    If it exists, delete it.
+    """
+    project_slug = slugify(TEST_PROJECT)
+    try:
+        project = get_project(
+            namespace_slug=TEST_ORG_SLUG,
+            project_slug=project_slug,
+            client=client,
+        )
+        delete_project(
+            namespace_slug=TEST_ORG_SLUG,
+            project_slug=project.slug,
+            client=client,
+        )
+    except Exception:
+        # Project does not exist or could not be fetched; ignore
+        pass
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -61,7 +61,7 @@ def get_project(
     Returns:
         Project: A Project object representing the retrieved project.
     """
-    client = client or get_default_client()
+    client = client or get_default_client()[0]
 
     # Define the endpoint
     endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/"
@@ -126,7 +126,7 @@ def create_project(
     Returns:
         Project: A Project object representing the created project.
     """
-    client = client or get_default_client()
+    client = client or get_default_client()[0]
 
     # Define the endpoint and payload
     endpoint = f"/api/v0/{namespace_slug}/projects/"
@@ -193,7 +193,7 @@ def delete_project(
     Returns:
         None
     """
-    client = client or get_default_client()
+    client = client or get_default_client()[0]
 
     # Define the endpoint
     endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/"

@@ -5,7 +5,6 @@ import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import pytest_asyncio
 
 import afnio as hf
 from afnio._variable import _allow_grad_fn_assignment
@@ -15,7 +14,25 @@ from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._node_registry import register_node
 from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
 from afnio.tellurio.client import get_default_client
+from afnio.tellurio.run import init
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
+
+
+@pytest.fixture(autouse=True)
+def login_and_ensure_default_run():
+    """
+    Test the login function with real HTTP and WebSocket connections and
+    ensure a default Run exists and is set as active before tests.
+    """
+    # Log in to the Tellurio service using the API key
+    api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
+    login(api_key=api_key)
+
+    # Use your test org/project names from env or defaults
+    namespace_slug = os.getenv("TEST_ORG_SLUG", "tellurio-test")
+    project_display_name = os.getenv("TEST_PROJECT", "Test Project")
+    run = init(namespace_slug, project_display_name)
+    return run
 
 
 @pytest.fixture
@@ -37,16 +54,6 @@ def variable():
     assert var.variable_id is not None
 
     return var
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def login_fixture():
-    """
-    Test the login function with real HTTP and WebSocket connections.
-    """
-    api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
-    login(api_key=api_key)
-    api_key = api_key
 
 
 class TestClientToServerVariableSync:
@@ -349,7 +356,7 @@ class TestServerToClientVariableSync:
             mock_server_append_grad_request(variable_id, field, value)
         """
 
-        def _mock(variable_id, gradient):
+        def _mock(variable_id, gradient_id, gradient):
 
             # Compose the JSON-RPC message
             message = json.dumps(
@@ -358,6 +365,7 @@ class TestServerToClientVariableSync:
                     "method": "append_grad",
                     "params": {
                         "variable_id": variable_id,
+                        "gradient_id": gradient_id,
                         "gradient": gradient,
                     },
                     "id": "test-id-123",
@@ -725,7 +733,9 @@ class TestServerToClientVariableSync:
 
         # Server appends first gradient
         value = {"data": "gradient", "role": "grad_1", "requires_grad": False}
-        send_mock = mock_server_append_grad_request(variable.variable_id, value)
+        send_mock = mock_server_append_grad_request(
+            variable.variable_id, "grad_123", value
+        )
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 1
@@ -739,7 +749,9 @@ class TestServerToClientVariableSync:
 
         # Server appends second gradient (new entire _grad list is sent)
         value = {"data": "gradient", "role": "grad_2", "requires_grad": False}
-        send_mock = mock_server_append_grad_request(variable.variable_id, value)
+        send_mock = mock_server_append_grad_request(
+            variable.variable_id, "grad_456", value
+        )
 
         # Assert that the variable was updated locally
         assert len(variable.grad) == 2
