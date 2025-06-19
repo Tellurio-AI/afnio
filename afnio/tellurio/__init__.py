@@ -1,12 +1,14 @@
 import atexit
 import logging
 import os
+from typing import Any, Optional
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio._eventloop import _event_loop_thread, run_in_background_loop
+from afnio.tellurio.run_context import get_active_run
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
-from .client import InvalidAPIKeyError, get_default_client
+from .client import InvalidAPIKeyError, TellurioClient, get_default_client
 from .run import init
 
 # Configure logging
@@ -107,6 +109,26 @@ def login(api_key: str = None, relogin=False):
     return run_in_background_loop(_login())  # Handle both sync and async contexts
 
 
+def log(
+    name: str,
+    value: Any,
+    step: Optional[int] = None,
+    client: Optional[TellurioClient] = None,
+):
+    """
+    Log a metric to the active run.
+
+    Args:
+            name (str): Name of the metric.
+            value (Any): Value of the metric. Can be any type that is JSON serializable.
+            step (int, optional): Step number. If not provided, the backend will
+                auto-compute it.
+            client (TellurioClient, optional): The client to use for the request.
+    """
+    run = get_active_run()
+    run.log(name=name, value=value, step=step, client=client)
+
+
 def _close_singleton_ws_client():
     """
     Closes the singleton WebSocket client if it exists.
@@ -136,7 +158,7 @@ def _shutdown():
 atexit.register(_shutdown)
 
 
-__all__ = ["configure_logging", "init", "login"]
+__all__ = ["configure_logging", "init", "log", "login"]
 
 # Please keep this list sorted
 assert __all__ == sorted(__all__)
