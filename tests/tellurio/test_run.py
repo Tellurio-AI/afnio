@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import List
 
@@ -7,6 +8,7 @@ from slugify import slugify
 
 from afnio.tellurio.project import Project, get_project
 from afnio.tellurio.run import Run, RunStatus, init
+from afnio.tellurio.run_context import get_active_run_uuid
 
 TEST_USER_USERNAME = os.getenv("TEST_USER_USERNAME", "testuser")
 TEST_USER_SLUG = os.getenv("TEST_USER_SLUG", "testuser")
@@ -154,3 +156,85 @@ def test_init_run_with_various_inputs(
                 status=status,
                 client=client,
             )
+
+
+def test_run_finish_sets_status_and_clears_active_uuid(
+    client, create_and_delete_project
+):
+    """
+    Test that Run.finish() sets the run status to COMPLETED on the server
+    and clears the active run UUID.
+    """
+    project, _ = create_and_delete_project
+
+    # Create a run
+    run = init(
+        namespace_slug=TEST_ORG_SLUG,
+        project_display_name=project.display_name,
+        name="FinishTestRun",
+        description="Testing finish()",
+        status=RunStatus.RUNNING,
+        client=client,
+    )
+
+    # Ensure the run is active and status is RUNNING
+    assert run.status == RunStatus.RUNNING
+    assert get_active_run_uuid() == run.uuid
+
+    # Call finish and capture PATCH response
+    # Patch the Run.finish method to return the response for testing
+    original_patch = client.patch
+    patch_response = {}
+
+    def patch_and_capture(endpoint, json):
+        resp = original_patch(endpoint, json)
+        patch_response["response"] = resp
+        return resp
+
+    client.patch = patch_and_capture
+    run.finish(client=client)
+    client.patch = original_patch  # Restore
+
+    # The status should be COMPLETED
+    assert run.status == RunStatus.COMPLETED
+
+    # The active run UUID should be cleared
+    with pytest.raises(ValueError):
+        get_active_run_uuid()
+
+    # Check PATCH response body
+    response = patch_response["response"]
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == RunStatus.COMPLETED.value
+
+    # Check date_updated > date_created
+    date_created = datetime.datetime.fromisoformat(
+        data["date_created"].replace("Z", "+00:00")
+    )
+    date_updated = datetime.datetime.fromisoformat(
+        data["date_updated"].replace("Z", "+00:00")
+    )
+    assert date_updated >= date_created
+
+
+def test_run_finish_idempotent(client, create_and_delete_project):
+    """
+    Test that calling finish() multiple times does not raise
+    and always sets status to COMPLETED.
+    """
+    project, _ = create_and_delete_project
+
+    run = init(
+        namespace_slug=TEST_ORG_SLUG,
+        project_display_name=project.display_name,
+        name="FinishIdempotentRun",
+        description="Testing finish() idempotency",
+        status=RunStatus.RUNNING,
+        client=client,
+    )
+
+    run.finish(client=client)
+    # Call finish again; should not raise
+    run.finish(client=client)
+    assert run.status == RunStatus.COMPLETED

@@ -24,6 +24,16 @@ class RunStatus(Enum):
     FAILED = "FAILED"
 
 
+class RunOrg:
+    """Represents a Tellurio Run Organization."""
+
+    def __init__(self, slug: str):
+        self.slug = slug
+
+    def __repr__(self):
+        return f"<Organization slug={self.slug}>"
+
+
 class RunProject:
     """
     Represents a Tellurio Run Project.
@@ -65,6 +75,7 @@ class Run:
         status: RunStatus,
         date_created: Optional[datetime] = None,
         date_updated: Optional[datetime] = None,
+        organization: Optional[RunOrg] = None,
         project: Optional[RunProject] = None,
         user: Optional[RunUser] = None,
     ):
@@ -74,6 +85,7 @@ class Run:
         self.status = RunStatus(status)
         self.date_created = date_created
         self.date_updated = date_updated
+        self.organization = organization
         self.project = project
         self.user = user
 
@@ -82,6 +94,52 @@ class Run:
             f"<Run uuid={self.uuid} name={self.name} status={self.status} "
             f"project={self.project.display_name if self.project else None}>"
         )
+
+    def finish(self, client: Optional[TellurioClient] = None):
+        """
+        Marks the run as COMPLETED on the server by sending a PATCH request,
+        and clears the active run UUID.
+
+        Args:
+            client (TellurioClient, optional): The client to use for the request.
+                If not provided, the default client will be used.
+
+        Raises:
+            Exception: If the PATCH request fails.
+        """
+        client = client or get_default_client()[0]
+
+        namespace_slug = self.organization.slug if self.organization else None
+        project_slug = self.project.slug if self.project else None
+        run_uuid = self.uuid
+
+        if not (namespace_slug and project_slug and run_uuid):
+            raise ValueError("Run object is missing required identifiers.")
+
+        endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/{run_uuid}/"
+        payload = {"status": RunStatus.COMPLETED.value}
+
+        try:
+            response = client.patch(endpoint, json=payload)
+            if response.status_code == 200:
+                self.status = RunStatus.COMPLETED
+                logger.info(f"Run {self.name!r} marked as COMPLETED.")
+            else:
+                logger.error(
+                    f"Failed to update run status: {response.status_code} - {response.text}"  # noqa: E501
+                )
+                response.raise_for_status()
+        except Exception as e:
+            logger.error(f"An error occurred while updating the run status: {e}")
+            raise
+
+        # Clear the active run UUID after finishing
+        try:
+            set_active_run_uuid(None)
+        except Exception:
+            pass
+
+    # TODO: If any error happens we should update the run status to CRASHED; Also the server side should implement this
 
 
 def init(
@@ -176,6 +234,9 @@ def init(
             )
 
             # Parse project and user fields
+            org_obj = RunOrg(
+                slug=namespace_slug,
+            )
             project_obj = RunProject(
                 uuid=data["project"]["uuid"],
                 display_name=data["project"]["display_name"],
@@ -195,6 +256,7 @@ def init(
                 status=RunStatus(data["status"]),
                 date_created=date_created,
                 date_updated=date_updated,
+                organization=org_obj,
                 project=project_obj,
                 user=user_obj,
             )
