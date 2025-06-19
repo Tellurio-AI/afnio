@@ -10,7 +10,7 @@ import afnio.tellurio.client as client_mod
 from afnio.tellurio import run as run_mod
 from afnio.tellurio.project import Project, get_project
 from afnio.tellurio.run import Run, RunStatus, init
-from afnio.tellurio.run_context import get_active_run_uuid
+from afnio.tellurio.run_context import get_active_run
 
 TEST_USER_USERNAME = os.getenv("TEST_USER_USERNAME", "testuser")
 TEST_USER_SLUG = os.getenv("TEST_USER_SLUG", "testuser")
@@ -209,7 +209,7 @@ def test_run_finish_sets_status_and_clears_active_uuid(
 
     # Ensure the run is active and status is RUNNING
     assert run.status == RunStatus.RUNNING
-    assert get_active_run_uuid() == run.uuid
+    assert get_active_run() == run
 
     # Call finish and capture PATCH response
     # Patch the Run.finish method to return the response for testing
@@ -230,7 +230,7 @@ def test_run_finish_sets_status_and_clears_active_uuid(
 
     # The active run UUID should be cleared
     with pytest.raises(ValueError):
-        get_active_run_uuid()
+        get_active_run()
 
     # Check PATCH response body
     response = patch_response["response"]

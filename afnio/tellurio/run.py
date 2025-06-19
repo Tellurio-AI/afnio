@@ -13,7 +13,7 @@ from traitlets import Any
 
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import create_project, get_project
-from afnio.tellurio.run_context import set_active_run_uuid
+from afnio.tellurio.run_context import set_active_run
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ class Run:
 
         # Clear the active run UUID after finishing
         try:
-            set_active_run_uuid(None)
+            set_active_run(None)
         except Exception:
             pass
 
@@ -342,7 +342,7 @@ def init(
                 project=project_obj,
                 user=user_obj,
             )
-            set_active_run_uuid(run.uuid)
+            set_active_run(run)
             _register_safeguard(run)
             return run
         else:
@@ -412,7 +412,7 @@ def _register_safeguard(run):
                     + traceback.format_exc()
                 )
             finally:
-                set_active_run_uuid(run.uuid)
+                set_active_run(run)
         _safeguard_run = run
         _safeguard_finished = False
         if not _safeguard_registered:
