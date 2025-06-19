@@ -139,6 +139,20 @@ class Run:
         except Exception:
             pass
 
+    def __enter__(self):
+        """
+        Enter the runtime context related to this object.
+        Returns self so it can be used as a context manager.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit the runtime context and finish the run.
+        If an exception occurred, you may want to set status to CRASHED in the future.
+        """
+        self.finish()
+
     # TODO: If any error happens we should update the run status to CRASHED; Also the server side should implement this
 
 
