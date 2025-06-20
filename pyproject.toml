@@ -1,0 +1,43 @@
+[project]
+name = "afnio"
+version = "0.1.0"
+description = "Afnio Python library and Tellurio Studio CLI tool"
+authors = [
+    { name = "Tellurio", email = "contact@tellurio.ai" }
+]
+license = { file = "LICENSE.md" }
+keywords = ["ai-agent", "language-models", "prompt-optimization", "afnio"]
+requires-python = ">=3.9"
+readme = { file = "README.md", content-type = "text/markdown" }
+dependencies = [
+    "httpx>=0.28.1",
+    "click>=8.1.8",
+    "python-dotenv>=1.1.0",
+    "keyring>=25.6.0",
+    "python-slugify>=8.0.4",
+    "websockets>=15.0.1",
+    "openai>=1.58.1",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+]
+
+[project.urls]
+homepage = "https://github.com/Tellurio-AI/afnio"
+repository = "https://github.com/Tellurio-AI/afnio"
+
+[tool.setuptools]
+packages = { find = { exclude = ["tmp", "tmp.*"] } }
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
+[project.scripts]
+afnio = "afnio.tellurio.cli:cli"
+
+[build-system]
+requires = ["setuptools>=58", "wheel"]
+build-backend = "setuptools.build_meta"
