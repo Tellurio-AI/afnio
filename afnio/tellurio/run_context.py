@@ -1,27 +1,33 @@
 # Define the global default active Run instances
-_active_run_uuid = None
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from afnio.tellurio.run import Run
+
+_active_run = None
 
 
-def set_active_run_uuid(uuid: str):
+def set_active_run(run: "Run"):
     """
-    Sets the active run UUID globally.
+    Sets the active run globally.
 
     Args:
-        uuid (str): The UUID of the active run.
+        run (Run): The Run instance to set as active.
     """
-    global _active_run_uuid
-    _active_run_uuid = uuid
+    global _active_run
+    _active_run = run
 
 
-def get_active_run_uuid() -> str:
+def get_active_run() -> "Run":
     """
-    Gets the active run UUID.
-    If no active run UUID is set, it raises an exception.
+    Gets the active run.
+    If no active run is set, it raises an exception.
 
     Returns:
-        str: The UUID of the active run.
+        Run: The currently active Run instance.
     """
-    global _active_run_uuid
-    if _active_run_uuid is None:
-        raise ValueError("No active run UUID is set.")
-    return _active_run_uuid
+    global _active_run
+    if _active_run is None:
+        raise ValueError("No active run is set.")
+    return _active_run

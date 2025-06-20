@@ -9,10 +9,11 @@ from enum import Enum
 from typing import Optional
 
 from slugify import slugify
+from traitlets import Any
 
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import create_project, get_project
-from afnio.tellurio.run_context import set_active_run_uuid
+from afnio.tellurio.run_context import set_active_run
 
 logger = logging.getLogger(__name__)
 
@@ -146,12 +147,61 @@ class Run:
 
         # Clear the active run UUID after finishing
         try:
-            set_active_run_uuid(None)
+            set_active_run(None)
         except Exception:
             pass
 
         # Mark safeguard as finished
         _unregister_safeguard(self)
+
+    def log(
+        self,
+        name: str,
+        value: Any,
+        step: Optional[int] = None,
+        client: Optional[TellurioClient] = None,
+    ):
+        """
+        Log a metric for this run.
+
+        Args:
+            name (str): Name of the metric.
+            value (Any): Value of the metric. Can be any type that is JSON serializable.
+            step (int, optional): Step number. If not provided, the backend will
+                auto-compute it.
+            client (TellurioClient, optional): The client to use for the request.
+        """
+        client = client or get_default_client()[0]
+
+        namespace_slug = self.organization.slug if self.organization else None
+        project_slug = self.project.slug if self.project else None
+        run_uuid = self.uuid
+
+        if not (namespace_slug and project_slug and run_uuid):
+            raise ValueError("Run object is missing required identifiers.")
+
+        endpoint = (
+            f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/{run_uuid}/metrics/"
+        )
+        payload = {
+            "name": name,
+            "value": value,
+        }
+        if step is not None:
+            payload["step"] = step
+
+        try:
+            response = client.post(endpoint, json=payload)
+            if response.status_code == 201:
+                logger.info(f"Logged metric '{name}'={value} for run '{self.name}'.")
+            else:
+                logger.error(
+                    f"Failed to log metric: {response.status_code} - {response.text}"
+                )
+                response.raise_for_status()
+        except Exception as e:
+            logger.error(f"An error occurred while logging the metric: {e}")
+            raise
 
     def __enter__(self):
         """
@@ -292,7 +342,7 @@ def init(
                 project=project_obj,
                 user=user_obj,
             )
-            set_active_run_uuid(run.uuid)
+            set_active_run(run)
             _register_safeguard(run)
             return run
         else:
@@ -330,18 +380,20 @@ def _finish_active_run_on_exit():
                     try:
                         _safeguard_run.finish(status=RunStatus.CRASHED)
                     except Exception:
-                        logger.error(
-                            "Failed to mark run as CRASHED on exit:\n"
-                            + traceback.format_exc()
-                        )
+                        if not _IN_ATEXIT:
+                            logger.error(
+                                "Failed to mark run as CRASHED on exit:\n"
+                                + traceback.format_exc()
+                            )
                 else:
                     try:
                         _safeguard_run.finish(status=RunStatus.COMPLETED)
                     except Exception:
-                        logger.error(
-                            "Failed to mark run as COMPLETED on exit:\n"
-                            + traceback.format_exc()
-                        )
+                        if not _IN_ATEXIT:
+                            logger.error(
+                                "Failed to mark run as COMPLETED on exit:\n"
+                                + traceback.format_exc()
+                            )
                 _safeguard_finished = True
     finally:
         _IN_ATEXIT = False
@@ -360,7 +412,7 @@ def _register_safeguard(run):
                     + traceback.format_exc()
                 )
             finally:
-                set_active_run_uuid(run.uuid)
+                set_active_run(run)
         _safeguard_run = run
         _safeguard_finished = False
         if not _safeguard_registered:

@@ -23,7 +23,7 @@ from afnio.tellurio._variable_registry import (
     suppress_variable_notifications,
     update_local_variable_field,
 )
-from afnio.tellurio.run_context import get_active_run_uuid
+from afnio.tellurio.run_context import get_active_run
 
 # Configure logging
 configure_logging()
@@ -699,7 +699,8 @@ class TellurioWebSocketClient:
         if not self.connection:
             raise RuntimeError("WebSocket is not connected")
 
-        params["run_uuid"] = get_active_run_uuid()
+        active_run = get_active_run()
+        params["run_uuid"] = active_run.uuid
 
         req_id = str(uuid.uuid4()) if timeout else None
         request = {

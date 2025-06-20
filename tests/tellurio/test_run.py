@@ -10,7 +10,7 @@ import afnio.tellurio.client as client_mod
 from afnio.tellurio import run as run_mod
 from afnio.tellurio.project import Project, get_project
 from afnio.tellurio.run import Run, RunStatus, init
-from afnio.tellurio.run_context import get_active_run_uuid
+from afnio.tellurio.run_context import get_active_run
 
 TEST_USER_USERNAME = os.getenv("TEST_USER_USERNAME", "testuser")
 TEST_USER_SLUG = os.getenv("TEST_USER_SLUG", "testuser")
@@ -33,6 +33,19 @@ def get_run_status_from_server(client, namespace_slug, project_slug, run_uuid):
         if run["uuid"] == run_uuid:
             return run["status"]
     raise AssertionError(f"Run {run_uuid} not found on server.")
+
+
+def get_run_metrics_from_server(client, namespace_slug, project_slug, run_uuid):
+    """
+    Helper function to get the metrics of a run from the server.
+    Returns a list of metrics.
+    """
+    endpoint = (
+        f"/api/v0/{namespace_slug}/projects/{project_slug}/runs/{run_uuid}/metrics/"
+    )
+    response = client.get(endpoint)
+    assert response.status_code == 200
+    return response.json()
 
 
 def test_init_run_in_existing_project(client, create_and_delete_project):
@@ -196,7 +209,7 @@ def test_run_finish_sets_status_and_clears_active_uuid(
 
     # Ensure the run is active and status is RUNNING
     assert run.status == RunStatus.RUNNING
-    assert get_active_run_uuid() == run.uuid
+    assert get_active_run() == run
 
     # Call finish and capture PATCH response
     # Patch the Run.finish method to return the response for testing
@@ -217,7 +230,7 @@ def test_run_finish_sets_status_and_clears_active_uuid(
 
     # The active run UUID should be cleared
     with pytest.raises(ValueError):
-        get_active_run_uuid()
+        get_active_run()
 
     # Check PATCH response body
     response = patch_response["response"]
@@ -360,3 +373,103 @@ def test_run_context_manager_completed_and_failed(client):
     status = get_run_status_from_server(client, namespace_slug, project_slug, run_uuid)
     assert status == RunStatus.CRASHED.value
     assert run.status.value == RunStatus.CRASHED.value
+
+
+def test_run_log_metric(client):
+    """
+    Test that Run.log() correctly logs a metric and it appears on the server.
+    """
+    namespace_slug = "tellurio-test"
+    project_display_name = "Test Project"
+    project_slug = slugify(project_display_name)
+
+    run = init(
+        namespace_slug=namespace_slug,
+        project_display_name=project_display_name,
+        name="LogMetricRun",
+        description="Testing log()",
+        status=RunStatus.RUNNING,
+        client=client,
+    )
+
+    # Log a metric
+    run.log(name="accuracy", value=0.95, client=client)
+
+    # Fetch metrics from the server and check
+    metrics = get_run_metrics_from_server(client, TEST_ORG_SLUG, project_slug, run.uuid)
+    found = any(
+        m["name"] == "accuracy" and float(m["value"]) == 0.95 and m["step"] == 0
+        for m in metrics
+    )
+    assert found, "Logged metric 'accuracy' with value 0.95 not found on server."
+
+
+def test_run_log_metric_with_step(client):
+    """
+    Test that Run.log() correctly logs a metric with a step
+    and it appears on the server.
+    """
+    namespace_slug = "tellurio-test"
+    project_display_name = "Test Project"
+    project_slug = slugify(project_display_name)
+
+    run = init(
+        namespace_slug=namespace_slug,
+        project_display_name=project_display_name,
+        name="LogMetricStepRun",
+        description="Testing log() with step",
+        status=RunStatus.RUNNING,
+        client=client,
+    )
+
+    # Log a metric with a step
+    run.log(name="loss", value=0.123, step=5, client=client)
+
+    # Fetch metrics from the server and check
+    metrics = get_run_metrics_from_server(client, TEST_ORG_SLUG, project_slug, run.uuid)
+    found = any(
+        m["name"] == "loss" and float(m["value"]) == 0.123 and m.get("step") == 5
+        for m in metrics
+    )
+    assert (
+        found
+    ), "Logged metric 'loss' with value 0.123 and step 5 not found on server."
+
+
+def test_run_log_multiple_metrics(client):
+    """
+    Test that logging multiple metrics works and all appear on the server.
+    """
+    namespace_slug = "tellurio-test"
+    project_display_name = "Test Project"
+    project_slug = slugify(project_display_name)
+
+    run = init(
+        namespace_slug=namespace_slug,
+        project_display_name=project_display_name,
+        name="LogMultipleMetricsRun",
+        description="Testing multiple log() calls",
+        status=RunStatus.RUNNING,
+        client=client,
+    )
+
+    metrics_to_log = [
+        ("accuracy", 0.8, None),
+        ("loss", 0.2, 1),
+        ("precision", 0.75, 2),
+    ]
+    for name, value, step in metrics_to_log:
+        run.log(name=name, value=value, step=step, client=client)
+
+    # Fetch metrics from the server and check all are present
+    metrics = get_run_metrics_from_server(client, TEST_ORG_SLUG, project_slug, run.uuid)
+    for name, value, step in metrics_to_log:
+        found = any(
+            m["name"] == name
+            and float(m["value"]) == value
+            and (step is None or m.get("step") == step)
+            for m in metrics
+        )
+        assert (
+            found
+        ), f"Logged metric '{name}' with value {value} and step {step} not found on server."  # noqa: E501
