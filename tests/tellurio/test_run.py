@@ -398,7 +398,7 @@ def test_run_log_metric(client):
     # Fetch metrics from the server and check
     metrics = get_run_metrics_from_server(client, TEST_ORG_SLUG, project_slug, run.uuid)
     found = any(
-        m["name"] == "accuracy" and float(m["value"]) == 0.95 and m["step"] == 1
+        m["name"] == "accuracy" and float(m["value"]) == 0.95 and m["step"] == 0
         for m in metrics
     )
     assert found, "Logged metric 'accuracy' with value 0.95 not found on server."
