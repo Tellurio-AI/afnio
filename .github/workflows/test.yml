@@ -23,6 +23,16 @@ jobs:
         with:
           python-version: 3.9
 
+      # Prepare environment variables for the backend
+      - name: Prepare Environment File
+        env:
+          TEST_ACCOUNT_API_KEY: ${{ secrets.PROD_TEST_ACCOUNT_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_KEY }}
+        run: |
+          cp .env.sample .env
+          sed -i "s/YOUR-TELLURIO-API-KEY/${TEST_ACCOUNT_API_KEY}/g" .env
+          sed -i "s/YOUR-OPENAI-API-KEY/${OPENAI_API_KEY}/g" .env
+
       # Install dependencies
       - name: Install dependencies
         run: |
@@ -34,8 +44,6 @@ jobs:
 
       # Run tests with pytest
       - name: Run pytest
-        env:
-          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_KEY }}
         run: |
           source .venv/bin/activate
           pytest --maxfail=1 --disable-warnings
