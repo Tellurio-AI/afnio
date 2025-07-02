@@ -1,0 +1,54 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+      - main # Trigger on pull requests targeting the main branch
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python environment
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+
+      # Prepare environment variables for the backend
+      - name: Prepare Environment File
+        env:
+          TEST_ACCOUNT_API_KEY: ${{ secrets.PROD_TEST_ACCOUNT_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_KEY }}
+        run: |
+          cp .env.sample .env
+          sed -i "s/YOUR-TELLURIO-API-KEY/${TEST_ACCOUNT_API_KEY}/g" .env
+          sed -i "s/YOUR-OPENAI-API-KEY/${OPENAI_API_KEY}/g" .env
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install .
+          pip install .[testing]
+
+      # Run tests with pytest
+      - name: Run pytest
+        run: |
+          source .venv/bin/activate
+          pytest --maxfail=1 --disable-warnings
+
+      # Ensure that pytest ran successfully
+      - name: Verify tests passed
+        if: failure()
+        run: exit 1

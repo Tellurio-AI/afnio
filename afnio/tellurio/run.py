@@ -6,10 +6,9 @@ import threading
 import traceback
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from slugify import slugify
-from traitlets import Any
 
 from afnio.tellurio.client import TellurioClient, get_default_client
 from afnio.tellurio.project import create_project, get_project
