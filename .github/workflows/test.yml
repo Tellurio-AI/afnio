@@ -1,0 +1,46 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+      - main # Trigger on pull requests targeting the main branch
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python environment
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install .
+          pip install .[testing]
+
+      # Run tests with pytest
+      - name: Run pytest
+        env:
+          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_KEY }}
+        run: |
+          source .venv/bin/activate
+          pytest --maxfail=1 --disable-warnings
+
+      # Ensure that pytest ran successfully
+      - name: Verify tests passed
+        if: failure()
+        run: exit 1
