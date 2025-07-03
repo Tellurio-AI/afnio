@@ -1,5 +1,6 @@
 from typing import Any, Generic, Iterable, Optional, TypeVar, Union
 
+from afnio._variable import Variable
 from afnio.utils.data.dataset import Dataset
 from afnio.utils.data.sampler import RandomSampler, Sampler, SequentialSampler
 
@@ -80,8 +81,6 @@ class DataLoader(Generic[T_co]):
     def _next_index(self):
         return next(self._sampler_iter)
 
-    # TODO: Batches must return Variables with list `.data` field,
-    #       rather than tuples of Variables
     def __next__(self) -> Any:
         batch = []
         for _ in range(self.batch_size):
@@ -92,6 +91,41 @@ class DataLoader(Generic[T_co]):
                 if not batch or self.drop_last:
                     raise
                 break
+
+        # Batching logic:
+        # - If the dataset returns tuples, we transpose the batch so each position is
+        #   grouped together. For each group:
+        #     - If all elements are Variable, we create a single Variable whose data is
+        #       a list of the original .data fields, and whose role/requires_grad are
+        #       taken from the first Variable.
+        #     - Otherwise, we return a list of the grouped items.
+        # - If the dataset returns only Variables, we return a single Variable as above.
+        # - Otherwise, we return the batch as a list.
+        if batch and isinstance(batch[0], tuple):
+            transposed = list(zip(*batch))
+            collated = []
+            for items in transposed:
+                if all(isinstance(item, Variable) for item in items):
+                    first = items[0]
+                    collated.append(
+                        Variable(
+                            data=[item.data for item in items],
+                            role=first.role,
+                            requires_grad=first.requires_grad,
+                        )
+                    )
+                else:
+                    collated.append(list(items))
+            return tuple(collated)
+
+        if batch and all(isinstance(item, Variable) for item in batch):
+            first = batch[0]
+            return Variable(
+                data=[item.data for item in batch],
+                role=first.role,
+                requires_grad=first.requires_grad,
+            )
+
         return batch
 
     def __len__(self) -> int:
