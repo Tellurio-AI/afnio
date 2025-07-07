@@ -116,18 +116,32 @@ class BaseModel(ABC):
         nested values), while preserving the dictionary structure.
         """
 
-        def zero_out_values(
-            d: Dict[str, Union[int, Dict[str, int]]],
-        ) -> Dict[str, Union[int, Dict[str, int]]]:
-            return {
-                key: zero_out_values(value) if isinstance(value, dict) else 0
-                for key, value in d.items()
-            }
+        try:
+            # Get the singleton websocket client
+            _, ws_client = get_default_client()
 
-        if hasattr(self, "_usage"):
-            self._usage = zero_out_values(self._usage)
-        else:
-            self._usage = {}
+            payload = {
+                "model_id": self.model_id,
+            }
+            response = run_in_background_loop(
+                ws_client.call("clear_model_usage", payload)
+            )
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
+            model_id = response["result"].get("model_id")
+            if not model_id:
+                raise RuntimeError(
+                    f"Server did not return a model_id "
+                    f"for payload: {payload!r}, response: {response!r}"
+                )
+
+            logger.debug(f"LM model usage cleared on the server: {self!r}")
+        except Exception as e:
+            logger.error(f"Failed to clear LM model usage on the server: {e}")
+            raise
 
     def __deepcopy__(self, memo):
         """

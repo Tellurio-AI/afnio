@@ -8,7 +8,7 @@ from afnio.tellurio.run import init
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def login_and_ensure_default_run():
     """
     Test the login function with real HTTP and WebSocket connections and

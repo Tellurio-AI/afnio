@@ -15,7 +15,7 @@ from afnio.tellurio._variable_registry import PENDING_GRAD_FN_ASSIGNMENTS
 from afnio.tellurio.run import init
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def login_and_ensure_default_run():
     """
     Test the login function with real HTTP and WebSocket connections and
