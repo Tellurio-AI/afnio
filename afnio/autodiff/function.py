@@ -161,21 +161,23 @@ class Function:
                 "kwargs": serialized_kwargs,
             }
             response = run_in_background_loop(ws_client.call("run_function", payload))
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             logger.debug(f"Function instantiated and shared with the server: {cls!r}")
 
             # Deserialize the result
             result_data = response.get("result", {}).get("data")
             if not result_data:
-                logger.error(
+                raise RuntimeError(
                     f"Server did not return any data for Function.apply pass: "
                     f"payload={payload!r}, response={response!r}"
-                )
-                raise RuntimeError(
-                    "Failed to run function forward pass: server did not return data."
                 )
 
             return _deserialize_fn_output(result_data)
 
         except Exception as e:
-            logger.error(f"Failed to share function with the server: {e}")
+            logger.error(f"Failed to run function forward pass on the server: {e}")
             raise

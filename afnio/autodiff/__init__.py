@@ -106,6 +106,11 @@ def backward(
         response_ids = run_in_background_loop(
             ws_client.call("get_backprop_ids", payload)
         )
+        if "error" in response_ids:
+            raise RuntimeError(
+                response_ids["error"]["data"].get("exception", response_ids["error"])
+            )
+
         logger.debug(
             f"Fetched backpropagation variable IDs from the server: {response_ids!r}"
         )
@@ -135,18 +140,20 @@ def backward(
             "inputs": serialized_inputs,
         }
         response_bwd = run_in_background_loop(ws_client.call("run_backward", payload))
+        if "error" in response_bwd:
+            raise RuntimeError(
+                response_bwd["error"]["data"].get("exception", response_bwd["error"])
+            )
+
         logger.debug(
             f"Backward pass instantiated and shared with the server: {variables!r}"
         )
 
         result_message = response_bwd.get("result", {}).get("message")
         if result_message != "Backward pass executed successfully.":
-            logger.error(
+            raise RuntimeError(
                 f"Server did not return any data for backward pass: "
                 f"payload={payload!r}, response={response_bwd!r}"
-            )
-            raise RuntimeError(
-                "Failed to run backward pass: server did not return data."
             )
 
         logger.debug(
