@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import afnio.cognitive.functional as F
+from afnio._variable import Variable
 from afnio.models.openai import AsyncOpenAI
 from afnio.tellurio import login
 from afnio.tellurio._model_registry import MODEL_REGISTRY
@@ -38,7 +40,8 @@ def model(monkeypatch):
     monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
 
     # Create OpenAI model client
-    model = AsyncOpenAI(api_key="1234567890", organization="test-org")
+    api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
+    model = AsyncOpenAI(api_key=api_key)
     # Ensure model is registered
     assert model.model_id in MODEL_REGISTRY
     return model
@@ -62,6 +65,53 @@ class TestClientToServerModelSync:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         with pytest.raises(Exception):
             AsyncOpenAI()
+
+    def test_model_update_usage(self, model):
+        """
+        Test that the model's usage can be updated and retrieved correctly.
+        """
+        # Initial usage should be empty
+        assert model.get_usage() == {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0},
+            "completion_tokens_details": {
+                "reasoning_tokens": 0,
+                "audio_tokens": 0,
+                "accepted_prediction_tokens": 0,
+                "rejected_prediction_tokens": 0,
+            },
+        }
+
+        system = Variable(
+            data="You are an experienced Python software developer.",
+            role="agent behaviour",
+            requires_grad=True,
+        )
+        query = Variable(
+            data="Create a snippet to print 'Hello World!'",
+            role="query to the agent",
+            requires_grad=False,
+        )
+        messages = [
+            {"role": "system", "content": [system]},
+            {"role": "user", "content": [query]},
+        ]
+        _ = F.chat_completion(
+            model,
+            messages,
+            inputs={},
+            model="gpt-4o",
+            seed=42,
+            temperature=0,
+        )
+
+        # After the completion, usage should be updated
+        usage = model.get_usage()
+        assert usage["completion_tokens"] > 0
+        assert usage["prompt_tokens"] > 0
+        assert usage["total_tokens"] > 0
 
 
 class TestServerToClientModelSync:

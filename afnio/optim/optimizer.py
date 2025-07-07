@@ -82,6 +82,11 @@ class Optimizer:
             response = run_in_background_loop(
                 ws_client.call("create_optimizer", payload)
             )
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             logger.debug(f"Optimizer created and shared with the server: {self!r}")
 
             result = response.get("result", {})
@@ -91,12 +96,9 @@ class Optimizer:
             param_groups = result.get("param_groups")
 
             if not optimizer_id:
-                logger.error(
+                raise RuntimeError(
                     f"Server did not return an optimizer_id "
                     f"for payload: {payload!r}, response: {response!r}"
-                )
-                raise RuntimeError(
-                    "Failed to create Optimizer: server did not return a variable_id."
                 )
             self.optimizer_id = optimizer_id
             self.defaults = _deserialize_output(defaults)
@@ -406,28 +408,25 @@ class Optimizer:
         try:
             _, ws_client = get_default_client()
             response = run_in_background_loop(ws_client.call("clear_grad", payload))
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
 
             # Check server response
             result_message = response.get("result", {}).get("message")
             if result_message != "Gradients cleared successfully.":
-                logger.error(
-                    f"Server response mismatch: {response['result']!r} "
-                    f"(expected optimizer_id={self.optimizer_id!r}"
-                )
                 raise RuntimeError(
-                    "Failed to notify server of gradient clearing: "
-                    "server response does not match the update sent."
+                    f"Server response mismatch: (received {response['result']!r}, "
+                    f"but expected optimizer_id={self.optimizer_id!r})"
                 )
             logger.debug(
                 f"Gradient clearing notified to server and confirmed: "
                 f"optimizer_id={self.optimizer_id!r}"
             )
 
-        except Exception:
-            logger.exception(
-                f"Failed to notify server of gradient clearing: "
-                f"optimizer_id={self.optimizer_id!r}"
-            )
+        except Exception as e:
+            logger.exception(f"Failed to notify server of gradient clearing: {e}")
             raise
 
     def clear_grad(self) -> None:
@@ -498,6 +497,11 @@ class Optimizer:
                 "optimizer_id": self.optimizer_id,
             }
             response = run_in_background_loop(ws_client.call("run_step", payload))
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             logger.debug(
                 f"Optimization instantiated and shared with the server: "
                 f"optimizer_id={self.optimizer_id!r}"
@@ -528,12 +532,9 @@ class Optimizer:
                     ]
 
             if result_message != "Optimizer step executed successfully.":
-                logger.error(
+                raise RuntimeError(
                     f"Server did not return any data for optimization operation: "
                     f"payload={payload!r}, response={response!r}"
-                )
-                raise RuntimeError(
-                    "Failed to run optimization: server did not return data."
                 )
 
             self.state = des_result_state
@@ -570,6 +571,11 @@ class Optimizer:
             response = run_in_background_loop(
                 ws_client.call("add_param_group", payload)
             )
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             logger.debug(
                 f"Param group added and shared with the server: {param_group!r}"
             )
@@ -578,12 +584,9 @@ class Optimizer:
             param_group = result.get("param_group")
 
             if not param_group:
-                logger.error(
+                raise RuntimeError(
                     f"Server did not return a param_group "
                     f"for payload: {payload!r}, response: {response!r}"
-                )
-                raise RuntimeError(
-                    "Failed to add param_group: server did not return a param_groups."
                 )
             self.param_groups.append(_deserialize_output(param_group))
         except Exception as e:

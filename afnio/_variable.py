@@ -165,15 +165,17 @@ class Variable:
                 response = run_in_background_loop(
                     ws_client.call("create_variable", payload)
                 )
+                if "error" in response:
+                    raise RuntimeError(
+                        response["error"]["data"].get("exception", response["error"])
+                    )
+
                 logger.debug(f"Variable created and shared with the server: {self!r}")
                 variable_id = response.get("result", {}).get("variable_id")
                 if not variable_id:
-                    logger.error(
+                    raise RuntimeError(
                         f"Server did not return a variable_id "
                         f"for payload: {payload!r}, response: {response!r}"
-                    )
-                    raise RuntimeError(
-                        "Failed to create Variable: server did not return a variable_id."  # noqa: E501
                     )
                 self.variable_id = variable_id
                 self._initialized = True
@@ -647,30 +649,30 @@ class Variable:
             response = run_in_background_loop(
                 ws_client.call("update_variable", payload)
             )
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             # Check server response
             if (
                 response["result"]["variable_id"] != self.variable_id
                 or response["result"]["field"] != field
                 or response["result"]["value"] != end_value
             ):
-                logger.error(
-                    f"Server response mismatch: {response['result']!r} "
-                    f"(expected variable_id={self.variable_id!r}, field={field!r}, value={end_value!r})"  # noqa: E501
-                )
                 raise RuntimeError(
-                    "Failed to notify server of variable change: "
-                    "server response does not match the update sent."
+                    f"Server response mismatch: (received {response['result']!r}, "
+                    f"but expected variable_id={self.variable_id!r}, field={field!r}, "
+                    f"value={end_value!r})"
                 )
             logger.debug(
                 f"Variable change notified to server and confirmed: "
-                f"variable_id={self.variable_id!r}, field='{field}', value={end_value!r}"  # noqa: E501
+                f"variable_id={self.variable_id!r}, field='{field}', "
+                f"value={end_value!r}"
             )
 
-        except Exception:
-            logger.exception(
-                f"Failed to notify server of variable change: "
-                f"variable_id={self.variable_id!r}, field='{field}', value={end_value!r}"  # noqa: E501
-            )
+        except Exception as e:
+            logger.exception(f"Failed to notify server of variable change: {e}")
             raise
 
     def _on_append_grad(self, gradient: "Variable"):
@@ -716,29 +718,28 @@ class Variable:
         try:
             _, ws_client = get_default_client()
             response = run_in_background_loop(ws_client.call("append_grad", payload))
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             # Check server response
             if (
                 response["result"]["variable_id"] != self.variable_id
                 or response["result"]["gradient_id"] != gradient.variable_id
             ):
-                logger.error(
-                    f"Server response mismatch: {response['result']!r} "
-                    f"(expected variable_id={self.variable_id!r}, gradient={ser_grad!r}"
-                )
                 raise RuntimeError(
-                    "Failed to notify server of gradient append: "
-                    "server response does not match the update sent."
+                    f"Server response mismatch: (received {response['result']!r}, "
+                    f"but expected variable_id={self.variable_id!r}, "
+                    f"gradient={ser_grad!r}"
                 )
             logger.debug(
                 f"Gradient append notified to server and confirmed: "
                 f"variable_id={self.variable_id!r}, gradient={ser_grad!r}"
             )
 
-        except Exception:
-            logger.exception(
-                f"Failed to notify server of gradient append: "
-                f"variable_id={self.variable_id!r}, gradient={ser_grad!r}"
-            )
+        except Exception as e:
+            logger.exception(f"Failed to notify server of gradient append: {e}")
             raise
 
     def __setattr__(self, name, value):

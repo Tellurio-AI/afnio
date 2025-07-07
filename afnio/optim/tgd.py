@@ -197,6 +197,11 @@ def tgd(
         }
 
         response = run_in_background_loop(ws_client.call("run_optimizer_tgd", payload))
+        if "error" in response:
+            raise RuntimeError(
+                response["error"]["data"].get("exception", response["error"])
+            )
+
         logger.debug(f"TGD optimization request sent: {payload!r}")
 
         result = response.get("result", {})
@@ -219,12 +224,9 @@ def tgd(
             ]
 
         if result_message != "Functional TGD optimization step executed successfully.":
-            logger.error(
+            raise RuntimeError(
                 f"Server did not return any data for functional TGD optimization: "
                 f"payload={payload!r}, response={response!r}"
-            )
-            raise RuntimeError(
-                "Failed to run functional TGD optimization: server did not return data."
             )
 
         # Update the momentum_buffer_list with the deserialized buffers
@@ -233,5 +235,5 @@ def tgd(
 
         logger.debug("Functional TGD optimization executed successfully")
     except Exception as e:
-        logger.error(f"Failed to run functional TGD optimization: {e!r}")
+        logger.error(f"Failed to run functional TGD optimization on the server: {e!r}")
         raise

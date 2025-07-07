@@ -43,15 +43,18 @@ class BaseModel(ABC):
                 "usage": self.get_usage(),
             }
             response = run_in_background_loop(ws_client.call("create_model", payload))
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             logger.debug(f"LM model created and shared with the server: {self!r}")
+
             model_id = response["result"].get("model_id")
             if not model_id:
-                logger.error(
+                raise RuntimeError(
                     f"Server did not return a model_id "
                     f"for payload: {payload!r}, response: {response!r}"
-                )
-                raise RuntimeError(
-                    "Failed to create LM model: server did not return a model_id."
                 )
             self.model_id = model_id
             register_model(self)

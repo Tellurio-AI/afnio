@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from afnio.logging_config import configure_logging
@@ -90,29 +91,27 @@ class ModelClientSingleton:
             response = run_in_background_loop(
                 ws_client.call("set_model_singleton", payload)
             )
+            if "error" in response:
+                raise RuntimeError(
+                    response["error"]["data"].get("exception", response["error"])
+                )
+
             # Check server response
             if (
                 response["result"]["model_id"] != model_id
                 or response["result"]["completion_args"] != completion_args
             ):
-                logger.error(
-                    f"Server response mismatch: {response['result']!r} "
-                    f"(expected model_id={model_id!r}, "
-                    f"completion_args={completion_args!r})"
-                )
                 raise RuntimeError(
-                    "Faild to set model singleton: "
-                    "server response does not match the request sent."
+                    f"Server response mismatch: (received {response['result']!r}, "
+                    f"but expected model_id={model_id!r}, "
+                    f"completion_args={completion_args!r})"
                 )
             logger.debug(
                 f"Model singleton set on server and confirmed: "
                 f"model_id={model_id!r}, completion_args={completion_args!r}"
             )
-        except Exception:
-            logger.exception(
-                f"Failed to set model singleton on server: "
-                f"model_id={model_id!r}, completion_args={completion_args!r}"
-            )
+        except Exception as e:
+            logger.exception(f"Failed to set model singleton on server: {e}")
             raise
 
     def chat(self, messages: List[Dict[str, str]], **override_kwargs):
@@ -192,6 +191,16 @@ def set_backward_model_client(
         provider, model = model_path.split("/", 1)
     except ValueError:
         raise ValueError("`model_path` must be in the format 'provider/model'")
+
+    # Ensure client_args is a dict
+    if client_args is None:
+        client_args = {}
+
+    # Set api_key to value in client_args if present, else from env or None
+    if provider == "openai":
+        client_args["api_key"] = client_args.get("api_key", os.getenv("OPENAI_API_KEY"))
+    else:
+        raise ValueError(f"Unsupported provider: {provider}.")
 
     _model_singleton._initialize(provider, model, client_args, completion_args)
 
