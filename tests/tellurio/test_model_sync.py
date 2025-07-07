@@ -113,6 +113,78 @@ class TestClientToServerModelSync:
         assert usage["prompt_tokens"] > 0
         assert usage["total_tokens"] > 0
 
+    def test_model_clear_usage(self, model):
+        """
+        Test that the model's usage can be cleared.
+        """
+        # Initial usage should be empty
+        EMPY_USAGE = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0},
+            "completion_tokens_details": {
+                "reasoning_tokens": 0,
+                "audio_tokens": 0,
+                "accepted_prediction_tokens": 0,
+                "rejected_prediction_tokens": 0,
+            },
+        }
+        assert model.get_usage() == EMPY_USAGE
+
+        # Simulate a first completion to update usage
+        system = Variable(
+            data="You are an experienced Python software developer.",
+            role="agent behaviour",
+            requires_grad=True,
+        )
+        query = Variable(
+            data="Create a snippet to print 'Hello World!'",
+            role="query to the agent",
+            requires_grad=False,
+        )
+        messages = [
+            {"role": "system", "content": [system]},
+            {"role": "user", "content": [query]},
+        ]
+        _ = F.chat_completion(
+            model,
+            messages,
+            inputs={},
+            model="gpt-4o",
+            seed=42,
+            temperature=0,
+        )
+
+        # After the first completion, usage should be updated
+        usage = model.get_usage()
+        assert usage["completion_tokens"] > 0
+        assert usage["prompt_tokens"] > 0
+        assert usage["total_tokens"] > 0
+        tot_tokens = usage["total_tokens"]
+
+        # Clear the usage
+        model.clear_usage()
+
+        # After clearing, usage should be reset
+        assert model.get_usage() == EMPY_USAGE
+
+        # Simulate a second completion to update usage
+        _ = F.chat_completion(
+            model,
+            messages,
+            inputs={},
+            model="gpt-4o",
+            seed=42,
+            temperature=0,
+        )
+        usage = model.get_usage()
+        assert usage["completion_tokens"] > 0
+        assert usage["prompt_tokens"] > 0
+        # tot_tokens should be similar to the first completion (if its double, it means
+        # the usage was not cleared properly on the server)
+        assert tot_tokens - 15 < usage["total_tokens"] < tot_tokens + 15
+
 
 class TestServerToClientModelSync:
 
