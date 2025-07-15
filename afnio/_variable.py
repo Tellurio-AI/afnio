@@ -615,6 +615,7 @@ class Variable:
             "_pending_grad_fn_id",
             "_pending_grad",
             "_pending_data",
+            "__dict__",  # Avoids server error when calling `Optimizer.load_state_dict`
         }:
             # Do not notify for the property setter, as we already notify
             # for all the changes made inside the property setter.
