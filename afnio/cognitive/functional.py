@@ -1,3 +1,4 @@
+import builtins
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from afnio._utils import MultiTurnMessages
@@ -267,7 +268,7 @@ def lm_judge_evaluator(
     target: Optional[Union[str, List[str], Variable]] = None,
     inputs: Optional[Dict[str, Union[str, Variable]]] = None,
     success_fn: Optional[Callable[[List[Any]], bool]] = None,
-    reduction_fn: Optional[Callable[[List[Any]], Any]] = sum,
+    reduction_fn: Optional[Callable[[List[Any]], Any]] = builtins.sum,
     reduction_fn_purpose: Optional[Union[str, Variable]] = "summation",
     eval_mode: Union[bool, Variable] = True,
     **completion_args,
@@ -496,7 +497,7 @@ def deterministic_evaluator(
 def exact_match_evaluator(
     prediction: Variable,
     target: Union[str, List[str], Variable],
-    reduction_fn: Optional[Callable[[List[Any]], Any]] = sum,
+    reduction_fn: Optional[Callable[[List[Any]], Any]] = builtins.sum,
     reduction_fn_purpose: Optional[Union[str, Variable]] = "summation",
 ) -> Tuple[Variable, Variable]:
     """
