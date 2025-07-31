@@ -2,11 +2,15 @@ import os
 
 import pytest
 
+import afnio.cognitive.functional as F
+from afnio._model_client import get_backward_model_client, set_backward_model_client
 from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split
 from afnio.autodiff.evaluator import DeterministicEvaluator
 from afnio.autodiff.grad_mode import no_grad
+from afnio.models.openai import AsyncOpenAI
 from afnio.tellurio import login
+from afnio.tellurio._model_registry import MODEL_REGISTRY
 from afnio.tellurio.run import init
 
 
@@ -32,6 +36,22 @@ def variables():
     x = Variable(data="abc", role="first input", requires_grad=True)
     y = Variable(data="def", role="second input", requires_grad=False)
     return x, y
+
+
+@pytest.fixture
+def model(monkeypatch):
+    """
+    Fixture to create an LM model instance.
+    """
+    # Forcing consent to sharing API keys
+    monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
+
+    # Create OpenAI model client
+    api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
+    model = AsyncOpenAI(api_key=api_key)
+    # Ensure model is registered
+    assert model.model_id in MODEL_REGISTRY
+    return model
 
 
 class TestFunctionSync:
@@ -153,6 +173,61 @@ class TestFunctionSync:
             "first input and other variables: MY_FEEDBACK"
         )
         assert x.grad[0].role == "feedback to first input"
+
+    def test_backward_chat_completion(self, model):
+        """
+        Test the ChatCompletion function's backward pass.
+        """
+        # Set backward model client
+        set_backward_model_client("openai/gpt-4o")
+        bw_model_client = get_backward_model_client()
+
+        # Call ChatCompletion with a system message and a user query
+        system = Variable(
+            data="You are an experienced Python software developer.",
+            role="agent behaviour",
+            requires_grad=True,
+        )
+        query = Variable(
+            data="Create a snippet to print 'Hello World!'",
+            role="query to the agent",
+            requires_grad=False,
+        )
+        messages = [
+            {"role": "system", "content": [system]},
+            {"role": "user", "content": [query]},
+        ]
+        result = F.chat_completion(
+            model,
+            messages,
+            inputs={},
+            model="gpt-4o",
+            seed=42,
+            temperature=0,
+        )
+
+        # Assert that the result is valid
+        target_output = 'print("Hello World!")'
+        normalized_result = result.data.replace("'", '"').strip()
+        normalized_target = target_output.strip()
+        assert normalized_target in normalized_result
+
+        # Assert that the system parameter has no gradient initially
+        assert len(system.grad) == 0
+
+        # Backpropagating from last output
+        gradient = Variable(
+            data="The snippet should be in JavaScript.", role="gradient"
+        )
+        result.backward(gradient)
+
+        # Assert that the system parameter now has a gradient
+        assert len(system.grad) == 1
+
+        # Assert that the backward model client clears pending backward
+        # before allowing access to usage
+        usage = bw_model_client._client.get_usage()
+        assert usage["completion_tokens"] > 0
 
     def test_backward_clear_pending_grad(self):
         """
