@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 
 
 class NotebookInfoHandler(logging.Handler):
@@ -112,3 +113,25 @@ def configure_logging(verbosity: str = "info"):
         for h in logging.getLogger().handlers:
             if not isinstance(h, NotebookInfoHandler):
                 h.addFilter(NoInfoFilter())
+
+
+@contextmanager
+def set_logger_level(logger_name, level):
+    """
+    Context manager to temporarily set the logging level for a logger.
+
+    Args:
+        logger_name (str): Name of the logger to set the level for.
+        level (int): Logging level to set (e.g., logging.DEBUG, logging.INFO).
+
+    Example:
+        >>> with set_logger_level("afnio.tellurio.run", logging.WARNING):
+        >>>     # code that should log only WARNING and above
+    """
+    logger = logging.getLogger(logger_name)
+    old_level = logger.level
+    logger.setLevel(level)
+    try:
+        yield
+    finally:
+        logger.setLevel(old_level)
