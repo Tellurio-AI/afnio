@@ -1,0 +1,186 @@
+{
+  "openai": {
+    "pricing": {
+      "gpt-4.1": {
+        "input": 2.00,
+        "cached": 0.50,
+        "output": 8.00
+      },
+      "gpt-4.1-mini": {
+        "input": 0.40,
+        "cached": 0.10,
+        "output": 1.60
+      },
+      "gpt-4.1-nano": {
+        "input": 0.10,
+        "cached": 0.025,
+        "output": 0.40
+      },
+      "gpt-4.5-preview": {
+        "input": 75.00,
+        "cached": 37.50,
+        "output": 150.00
+      },
+      "gpt-4o": {
+        "input": 2.50,
+        "cached": 1.25,
+        "output": 10.00
+      },
+      "gpt-4o-2024-05-13": {
+        "input": 5.00,
+        "cached": null,
+        "output": 15.00
+      },
+      "gpt-4o-audio-preview": {
+        "input": 2.50,
+        "cached": null,
+        "output": 10.00
+      },
+      "gpt-4o-realtime-preview": {
+        "input": 5.00,
+        "cached": 2.50,
+        "output": 20.00
+      },
+      "gpt-4o-mini": {
+        "input": 0.15,
+        "cached": 0.075,
+        "output": 0.60
+      },
+      "gpt-4o-mini-audio-preview": {
+        "input": 0.15,
+        "cached": null,
+        "output": 0.60
+      },
+      "gpt-4o-mini-realtime-preview": {
+        "input": 0.60,
+        "cached": 0.30,
+        "output": 2.40
+      },
+      "o1": {
+        "input": 15.0,
+        "cached": 7.50,
+        "output": 60.00
+      },
+      "o1-pro": {
+        "input": 150.00,
+        "cached": null,
+        "output": 600.00
+      },
+      "o3-pro": {
+        "input": 20.00,
+        "cached": null,
+        "output": 80.00
+      },
+      "o3": {
+        "input": 2.00,
+        "cached": 0.50,
+        "output": 8.00
+      },
+      "o3-deep-research": {
+        "input": 10.00,
+        "cached": 2.50,
+        "output": 40.00
+      },
+      "o4-mini": {
+        "input": 1.10,
+        "cached": 0.275,
+        "output": 4.40
+      },
+      "o4-mini-deep-research": {
+        "input": 2.00,
+        "cached": 0.50,
+        "output": 8.00
+      },
+      "o3-mini": {
+        "input": 1.10,
+        "cached": 0.55,
+        "output": 4.40
+      },
+      "o1-mini": {
+        "input": 1.10,
+        "cached": 0.55,
+        "output": 4.40
+      },
+      "codex-mini-latest": {
+        "input": 1.50,
+        "cached": 0.375,
+        "output": 6.00
+      },
+      "gpt-4o-mini-search-preview": {
+        "input": 0.15,
+        "cached": null,
+        "output": 0.60
+      },
+      "gpt-4o-search-preview": {
+        "input": 2.50,
+        "cached": null,
+        "output": 10.00
+      },
+      "computer-use-preview": {
+        "input": 3.00,
+        "cached": null,
+        "output": 12.00
+      },
+      "gpt-image-1": {
+        "input": 5.00,
+        "cached": 1.25,
+        "output": null
+      }
+    },
+    "models": {
+      "gpt-4.1": "gpt-4.1",
+      "gpt-4.1-2025-04-14": "gpt-4.1",
+      "gpt-4.1-mini": "gpt-4.1-mini",
+      "gpt-4.1-mini-2025-04-14": "gpt-4.1-mini",
+      "gpt-4.1-nano": "gpt-4.1-nano",
+      "gpt-4.1-nano-2025-04-14": "gpt-4.1-nano",
+      "gpt-4.5-preview": "gpt-4.5-preview",
+      "gpt-4.5-preview-2025-02-27": "gpt-4.5-preview",
+      "gpt-4o": "gpt-4o",
+      "gpt-4o-2024-11-20": "gpt-4o",
+      "gpt-4o-2024-08-06": "gpt-4o",
+      "gpt-4o-2024-05-13": "gpt-4o-2024-05-13",
+      "gpt-4o-audio-preview": "gpt-4o-audio-preview",
+      "gpt-4o-audio-preview-2025-06-03": "gpt-4o-audio-preview",
+      "gpt-4o-audio-preview-2024-12-17": "gpt-4o-audio-preview",
+      "gpt-4o-audio-preview-2024-10-01": "gpt-4o-audio-preview",
+      "gpt-4o-realtime-preview": "gpt-4o-realtime-preview",
+      "gpt-4o-realtime-preview-2025-06-03": "gpt-4o-realtime-preview",
+      "gpt-4o-realtime-preview-2024-12-17": "gpt-4o-realtime-preview",
+      "gpt-4o-realtime-preview-2024-10-01": "gpt-4o-realtime-preview",
+      "gpt-4o-mini": "gpt-4o-mini",
+      "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
+      "gpt-4o-mini-audio-preview": "gpt-4o-mini-audio-preview",
+      "gpt-4o-mini-audio-preview-2024-12-17": "gpt-4o-mini-audio-preview",
+      "gpt-4o-mini-realtime-preview": "gpt-4o-mini-realtime-preview",
+      "gpt-4o-mini-realtime-preview-2024-12-17": "gpt-4o-mini-realtime-preview",
+      "o1":"o1",
+      "o1-2024-12-17": "o1",
+      "o1-preview-2024-09-12": "o1",
+      "o1-pro": "o1-pro",
+      "o1-pro-2025-03-19": "o1-pro",
+      "o3-pro": "o3-pro",
+      "o3-pro-2025-06-10": "o3-pro",
+      "o3": "o3",
+      "o3-2025-04-16": "o3",
+      "o3-deep-research": "o3-deep-research",
+      "o3-deep-research-2025-06-26": "o3-deep-research",
+      "o4-mini": "o4-mini",
+      "o4-mini-2025-04-16": "o4-mini",
+      "o4-mini-deep-research": "o4-mini-deep-research",
+      "o4-mini-deep-research-2025-06-26": "o4-mini-deep-research",
+      "o3-mini": "o3-mini",
+      "o3-mini-2025-01-31": "o3-mini",
+      "o1-mini": "o1-mini",
+      "o1-mini-2024-09-12": "o1-mini",
+      "codex-mini-latest": "codex-mini-latest",
+      "gpt-4o-mini-search-preview": "gpt-4o-mini-search-preview",
+      "gpt-4o-mini-search-preview-2025-03-11": "gpt-4o-mini-search-preview",
+      "gpt-4o-search-preview": "gpt-4o-search-preview",
+      "gpt-4o-search-preview-2025-03-11": "gpt-4o-search-preview",
+      "computer-use-preview": "computer-use-preview",
+      "computer-use-preview-2025-03-11": "computer-use-preview",
+      "gpt-image-1": "gpt-image-1"
+    }
+  }
+}

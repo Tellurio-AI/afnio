@@ -6,7 +6,15 @@ import urllib
 import urllib.request
 from typing import Any, Optional, Union
 
-import tqdm
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+    TransferSpeedColumn,
+)
 
 USER_AGENT = "afnio"
 
@@ -14,13 +22,33 @@ USER_AGENT = "afnio"
 def _urlretrieve(
     url: str, filename: Union[str, pathlib.Path], chunk_size: int = 1024 * 32
 ) -> None:
+    console = Console(force_jupyter=False)
     with urllib.request.urlopen(
         urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     ) as response:
-        with open(filename, "wb") as fh, tqdm.tqdm(total=response.length) as pbar:
+        total = response.length
+        with (
+            open(filename, "wb") as fh,
+            Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                "[progress.percentage]{task.percentage:>3.0f}%",
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                TimeElapsedColumn(),
+                TextColumn(
+                    "\033[K\033[K\033[K"
+                ),  # This workarounds a Rich bug that leaves ghost text
+                auto_refresh=False,  # We refresh manually to avoid the Rich bug
+                transient=False,
+                console=console,
+            ) as progress,
+        ):
+            task = progress.add_task("Downloading", total=total, visible=True)
             while chunk := response.read(chunk_size):
                 fh.write(chunk)
-                pbar.update(len(chunk))
+                progress.update(task, advance=len(chunk))
+                progress.refresh()
 
 
 def calculate_md5(
@@ -77,21 +105,19 @@ def download_url(
 
     # check if file is already present locally
     if check_integrity(fpath, md5):
-        print("Using downloaded and verified file: " + fpath)
+        print(f"Using downloaded and verified file: {fpath}")
         return
 
     # download the file
     try:
-        print("Downloading " + url + " to " + fpath)
+        print(f"Downloading {url} to {fpath}")
         _urlretrieve(url, fpath)
     except (urllib.error.URLError, OSError) as e:
         if url[:5] == "https":
             url = url.replace("https:", "http:")
             print(
-                "Failed download. Trying https -> http instead. Downloading "
-                + url
-                + " to "
-                + fpath
+                f"Failed download. Trying https -> http instead. "
+                f"Downloading {url} to {fpath}"
             )
             _urlretrieve(url, fpath)
         else:
@@ -118,5 +144,6 @@ def download(
 
     download_url(url, download_root, filename, md5)
 
-    archive = os.path.join(download_root, filename)
-    print(f"Extracting {archive} to {extract_root}")
+    # TODO: Handle unpacking of the archive if needed
+    # archive = os.path.join(download_root, filename)
+    # print(f"Extracting {archive} to {extract_root}")

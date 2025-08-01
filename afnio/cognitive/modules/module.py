@@ -28,10 +28,14 @@ from afnio._variable import Variable, is_scalar_variable
 from afnio.cognitive.parameter import Parameter
 from afnio.models.model import BaseModel
 from afnio.models.model_registry import MODEL_REGISTRY
+from afnio.optim.optimizer import Optimizer
 
 # Many methods of `Module` return `self` and we want those return values to be
 # the type of the subclass, not the looser type of `Module`.
 T = TypeVar("T", bound="Module")
+
+
+STEP_OUTPUT = Optional[Union[Tuple[Variable, Variable], Mapping[str, Any]]]
 
 
 class _IncompatibleKeys(
@@ -564,14 +568,14 @@ class Module:
                     self._completion_configs,
                     self._functions,
                 )
-                modules[name] = value
+                modules[name] = value  # TODO: use `register_*` method?
             elif modules is not None and name in modules:
                 if value is not None:
                     raise TypeError(
                         f"Cannot assign '{type(value).__name__}' as child module "
                         f"'{name}' (afnio.cognitive.Module or None expected)."
                     )
-                modules[name] = value
+                modules[name] = value  # TODO: use `register_*` method?
             else:
                 chats = self.__dict__.get("_chats")
                 if is_multi_turn_messages(value):
@@ -589,14 +593,14 @@ class Module:
                         self._completion_configs,
                         self._functions,
                     )
-                    chats[name] = value
+                    chats[name] = value  # TODO: use `register_*` method?
                 elif chats is not None and name in chats:
                     if value is not None:
                         raise TypeError(
                             f"Cannot assign '{type(value).__name__}' as chat '{name}' "
                             "(afnio.MultiTurnMessages or None expected)."
                         )
-                    chats[name] = value
+                    chats[name] = value  # TODO: use `register_*` method?
                 else:
                     models = self.__dict__.get("_models")
                     if isinstance(value, BaseModel):
@@ -614,7 +618,7 @@ class Module:
                             self._completion_configs,
                             self._functions,
                         )
-                        models[name] = value
+                        models[name] = value  # TODO: use `register_*` method?
                     elif models is not None and name in models:
                         if value is not None:
                             raise TypeError(
@@ -622,7 +626,7 @@ class Module:
                                 f"as model '{name}' "
                                 "(afnio.models.BaseModel or None expected)."
                             )
-                        models[name] = value
+                        models[name] = value  # TODO: use `register_*` method?
                     else:
                         completion_configs = self.__dict__.get("_completion_configs")
                         if isinstance(value, dict):
@@ -641,7 +645,9 @@ class Module:
                                 self._models,
                                 self._functions,
                             )
-                            completion_configs[name] = value
+                            completion_configs[name] = (
+                                value  # TODO: use `register_*` method?
+                            )
                         elif (
                             completion_configs is not None
                             and name in completion_configs
@@ -652,7 +658,9 @@ class Module:
                                     f"as completion config '{name}' "
                                     "(dict or None expected)."
                                 )
-                            completion_configs[name] = value
+                            completion_configs[name] = (
+                                value  # TODO: use `register_*` method?
+                            )
                         else:
                             functions = self.__dict__.get("_functions")
                             if _is_valid_function(value):
@@ -671,7 +679,9 @@ class Module:
                                     self._models,
                                     self._completion_configs,
                                 )
-                                functions[name] = value
+                                functions[name] = (
+                                    value  # TODO: use `register_*` method?
+                                )
                             elif functions is not None and name in functions:
                                 if value is not None:
                                     raise TypeError(
@@ -679,7 +689,9 @@ class Module:
                                         f"as function '{name}' "
                                         "(standalone function or None expected)."
                                     )
-                                functions[name] = value
+                                functions[name] = (
+                                    value  # TODO: use `register_*` method?
+                                )
                             else:
                                 buffers = self.__dict__.get("_buffers")
                                 if buffers is not None and name in buffers:
@@ -691,7 +703,9 @@ class Module:
                                             f"as buffer '{name}' "
                                             f"(afnio.Variable or None expected)."
                                         )
-                                    buffers[name] = value
+                                    buffers[name] = (
+                                        value  # TODO: use `register_*` method?
+                                    )
                                 else:
                                     super().__setattr__(name, value)
 
@@ -2110,3 +2124,92 @@ class Module:
                 for variable in message["content"]:
                     if variable.grad:
                         variable.grad = []
+
+    def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        r"""Perform a single training step.
+        This method should be implemented in subclasses to define the training logic.
+        It is called by the :class:`~afnio.trainer.trainer.Trainer`
+        during the training loop.
+        Args:
+            batch: The output of your data iterable,
+                normally a :class:`~afnio.util.data.DataLoader`.
+            batch_idx: The index of this batch.
+        Returns:
+            - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
+                - The evaluation `score` (a Variable containing the loss value).
+                - The `explanation` (a Variable containing a string explanation of the
+                  evaluation result).
+            - dict: A dictionary. Can include any keys, but must include
+                the key ``'loss'`` containing a tuple of two Variables
+                (`score` and `explanation`).
+            - None: Skip to the next batch.
+        Raises:
+            NotImplementedError: If not implemented in a subclass.
+        """
+        raise NotImplementedError(
+            "You must implement training_step in your Module subclass."
+        )
+
+    def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        r"""Perform a single validation step.
+        This method should be implemented in subclasses to define the validation logic.
+        It is called by the :class:`~afnio.trainer.trainer.Trainer`
+        during the validation loop.
+        Args:
+            batch: The output of your data iterable,
+                normally a :class:`~afnio.util.data.DataLoader`.
+            batch_idx: The index of this batch.
+        Returns:
+            - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
+                - The evaluation `score` (a Variable containing the loss value).
+                - The `explanation` (a Variable containing a string explanation of the
+                  evaluation result).
+            - dict: A dictionary. Can include any keys, but must include
+                the key ``'loss'`` containing a tuple of two Variables
+                (`score` and `explanation`).
+            - None: Skip to the next batch.
+        Raises:
+            NotImplementedError: If not implemented in a subclass.
+        """
+        raise NotImplementedError(
+            "You must implement validation_step in your Module subclass."
+        )
+
+    def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        r"""Perform a single test step.
+        This method should be implemented in subclasses to define the test logic.
+        It is called by the :class:`~afnio.trainer.trainer.Trainer`
+        during the testing loop.
+        Args:
+            batch: The output of your data iterable,
+                normally a :class:`~afnio.util.data.DataLoader`.
+            batch_idx: The index of this batch.
+        Returns:
+            - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
+                - The evaluation `score` (a Variable containing the loss value).
+                - The `explanation` (a Variable containing a string explanation of the
+                  evaluation result).
+            - dict: A dictionary. Can include any keys, but must include
+                the key ``'loss'`` containing a tuple of two Variables
+                (`score` and `explanation`).
+            - None: Skip to the next batch.
+        Raises:
+            NotImplementedError: If not implemented in a subclass.
+        """
+        raise NotImplementedError(
+            "You must implement test_step in your Module subclass."
+        )
+
+    def configure_optimizers(self) -> Optimizer:
+        r"""Configure and return the optimizer for this module.
+        This method should be implemented in subclasses to define the optimizer
+        configuration. It is called by the :class:`~afnio.trainer.trainer.Trainer`
+        to set up the optimization routine.
+        Returns:
+            Optimizer: An instance of an optimizer configured for this module.
+        Raises:
+            NotImplementedError: If not implemented in a subclass.
+        """
+        raise NotImplementedError(
+            "You must implement configure_optimizers in your Module subclass."
+        )

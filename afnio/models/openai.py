@@ -393,7 +393,7 @@ class OpenAI(
 
         # Update usage statistics
         if hasattr(response, "usage") and response.usage:
-            self.update_usage(response.usage)
+            self.update_usage(response.usage, model)
 
         return response.choices[0].message.content
 
@@ -412,14 +412,16 @@ class OpenAI(
         """
         raise NotImplementedError
 
-    def update_usage(self, usage: CompletionUsage) -> None:
+    def update_usage(self, usage: CompletionUsage, model_name: str = None) -> None:
         """Updates the internal usage counters with values from a new API response.
 
         Args:
             usage (CompletionUsage): The usage object returned by the OpenAI API.
+            model_name (str, optional): The name of the model for which the usage
+                is being updated. If None, cost is copied from usage if available.
         """
         if not hasattr(self, "_usage"):
-            self._usage = copy.deepcopy(INITIAL_USAGE)  # Ensure a fresh copy
+            self._usage.update(copy.deepcopy(INITIAL_USAGE))  # Ensure a fresh copy
 
         # Ensure we convert CompletionUsage to dict properly
         if isinstance(usage, CompletionUsage):
@@ -453,6 +455,16 @@ class OpenAI(
         self._usage["completion_tokens_details"][
             "rejected_prediction_tokens"
         ] += completion_tokens_details.get("rejected_prediction_tokens", 0)
+
+        # Update cost
+        if model_name is not None:
+            pricing = _get_pricing_for_model(self.provider, model_name)
+            cost = _calculate_cost(usage, pricing)
+            self._usage["cost"]["amount"] += cost
+        else:
+            # If cost is present in usage, copy it directly
+            if "cost" in usage and "amount" in usage["cost"]:
+                self._usage["cost"]["amount"] = usage["cost"]["amount"]
 
 
 class AsyncOpenAI(
@@ -776,7 +788,7 @@ class AsyncOpenAI(
 
         # Update usage statistics
         if hasattr(response, "usage") and response.usage:
-            self.update_usage(response.usage)
+            self.update_usage(response.usage, model)
 
         return response.choices[0].message.content
 
@@ -795,14 +807,16 @@ class AsyncOpenAI(
         """
         raise NotImplementedError
 
-    def update_usage(self, usage: CompletionUsage) -> None:
+    def update_usage(self, usage: CompletionUsage, model_name: str = None) -> None:
         """Updates the internal usage counters with values from a new API response.
 
         Args:
             usage (CompletionUsage): The usage object returned by the OpenAI API.
+            model_name (str, optional): The name of the model for which the usage
+                is being updated. If None, cost is copied from usage if available.
         """
         if not hasattr(self, "_usage"):
-            self._usage = copy.deepcopy(INITIAL_USAGE)  # Ensure a fresh copy
+            self._usage.update(copy.deepcopy(INITIAL_USAGE))  # Ensure a fresh copy
 
         # Ensure we convert CompletionUsage to dict properly
         if isinstance(usage, CompletionUsage):
@@ -836,6 +850,16 @@ class AsyncOpenAI(
         self._usage["completion_tokens_details"][
             "rejected_prediction_tokens"
         ] += completion_tokens_details.get("rejected_prediction_tokens", 0)
+
+        # Update cost
+        if model_name is not None:
+            pricing = _get_pricing_for_model(self.provider, model_name)
+            cost = _calculate_cost(usage, pricing)
+            self._usage["cost"]["amount"] += cost
+        else:
+            # If cost is present in usage, copy it directly
+            if "cost" in usage and "amount" in usage["cost"]:
+                self._usage["cost"]["amount"] = usage["cost"]["amount"]
 
 
 def _validate_config_param(name, value):
@@ -871,3 +895,30 @@ def _validate_config_param(name, value):
             f"Config parameter '{name}' "
             f"with value '{value}' of type {type(value).__name__} is not serializable."
         )
+
+
+def _get_pricing_for_model(provider: str, model_name: str) -> dict:
+    # Load pricing data (cache this in production)
+    prices_path = os.path.join(os.path.dirname(__file__), "model_prices.json")
+    with open(prices_path, "r") as f:
+        prices = json.load(f)
+    provider_data = prices.get(provider, {})
+    models_map = provider_data.get("models", {})
+    pricing_map = provider_data.get("pricing", {})
+    pricing_key = models_map.get(model_name, model_name)
+    return pricing_map.get(pricing_key, {})
+
+
+def _calculate_cost(usage: dict, pricing: dict) -> float:
+    input_tokens = usage.get("prompt_tokens", 0)
+    cached_tokens = usage.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+    uncached_tokens = input_tokens - cached_tokens
+    output_tokens = usage.get("completion_tokens", 0)
+    cost = 0.0
+    if "input" in pricing and pricing["input"] is not None:
+        cost += (uncached_tokens * pricing["input"]) / 1_000_000
+    if "cached" in pricing and pricing["cached"] is not None:
+        cost += (cached_tokens * pricing["cached"]) / 1_000_000
+    if "output" in pricing and pricing["output"] is not None:
+        cost += (output_tokens * pricing["output"]) / 1_000_000
+    return cost

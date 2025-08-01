@@ -158,7 +158,6 @@ class TREC(Dataset):
             for mirror in self.mirrors:
                 url = f"{mirror}{filename}"
                 try:
-                    print(f"Downloading {url}")
                     download(
                         url, download_root=self.raw_folder, filename=filename, md5=md5
                     )
@@ -253,6 +252,7 @@ class TREC(Dataset):
         return data, targets
 
 
+# TODO: Remove this class when TREC validation set is balanced and useful
 class TRECTmp(Dataset):
     mirrors = ["https://cogcomp.seas.upenn.edu/Data/QA/QC/"]
 
@@ -372,7 +372,6 @@ class TRECTmp(Dataset):
             for mirror in self.mirrors:
                 url = f"{mirror}{filename}"
                 try:
-                    print(f"Downloading {url}")
                     download(
                         url, download_root=self.raw_folder, filename=filename, md5=md5
                     )
