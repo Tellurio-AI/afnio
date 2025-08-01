@@ -82,6 +82,7 @@ class TestClientToServerModelSync:
                 "accepted_prediction_tokens": 0,
                 "rejected_prediction_tokens": 0,
             },
+            "cost": {"amount": 0.0, "currency": "USD"},
         }
 
         system = Variable(
@@ -112,6 +113,7 @@ class TestClientToServerModelSync:
         assert usage["completion_tokens"] > 0
         assert usage["prompt_tokens"] > 0
         assert usage["total_tokens"] > 0
+        assert usage["cost"]["amount"] > 0.0
 
     def test_model_clear_usage(self, model):
         """
@@ -129,6 +131,7 @@ class TestClientToServerModelSync:
                 "accepted_prediction_tokens": 0,
                 "rejected_prediction_tokens": 0,
             },
+            "cost": {"amount": 0.0, "currency": "USD"},
         }
         assert model.get_usage() == EMPY_USAGE
 
@@ -161,6 +164,7 @@ class TestClientToServerModelSync:
         assert usage["completion_tokens"] > 0
         assert usage["prompt_tokens"] > 0
         assert usage["total_tokens"] > 0
+        assert usage["cost"]["amount"] > 0.0
         tot_tokens = usage["total_tokens"]
 
         # Clear the usage
