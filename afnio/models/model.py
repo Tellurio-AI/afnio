@@ -1,3 +1,4 @@
+import copy
 import logging
 from abc import ABC
 from typing import Dict, List, Optional, Union
@@ -7,6 +8,9 @@ from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._model_registry import register_model
 from afnio.tellurio.client import get_default_client
 from afnio.tellurio.consent import check_consent
+
+INITIAL_COST = {"cost": {"amount": 0.0, "currency": "USD"}}
+
 
 # Configure logging
 configure_logging()
@@ -27,6 +31,7 @@ class BaseModel(ABC):
         self.provider = provider
         self._config = config or {}
         self._usage = usage or {}
+        self._usage.update(copy.deepcopy(INITIAL_COST))
         self.model_id = None
 
         # Request user consent before sending sensitive info to the server
@@ -77,17 +82,27 @@ class BaseModel(ABC):
         """
         return self._config
 
-    def update_usage(self, usage: Dict[str, int]) -> None:
+    def update_usage(self, usage: Dict[str, int], model_name: str = None) -> None:
         """
-        Updates the internal token usage statistics.
+        Updates the internal token usage statistics and cost.
 
         Each model provider (e.g., OpenAI, Anthropic) may have a different usage format.
         This method should be implemented by subclasses to ensure correct parsing
         and aggregation of token usage.
 
+        Behavior:
+            - If `model_name` is provided, the method dynamically calculates and updates
+              the cost based on the usage metrics and the pricing for the specified
+              model.
+            - If `model_name` is None, the method copies the cost value directly from
+              the `usage` dictionary (if present), which is typically used when
+              restoring state from a checkpoint.
+
         Args:
             usage (Dict[str, int]): A dictionary containing token usage metrics,
                 such as `prompt_tokens`, `completion_tokens`, and `total_tokens`.
+            model_name (str, optional): The name of the model for which the usage
+                is being updated. If None, cost is copied from usage if available.
 
         Raises:
             NotImplementedError: If called on the base class without an implementation.
@@ -96,7 +111,7 @@ class BaseModel(ABC):
 
     def get_usage(self) -> Dict[str, int]:
         """
-        Retrieves the current token usage statistics.
+        Retrieves the current token usage statistics and cost (in USD).
 
         Returns:
             Dict[str, int]: A dictionary containing cumulative token usage
@@ -104,7 +119,12 @@ class BaseModel(ABC):
 
         Example:
             >>> model.get_usage()
-            {'prompt_tokens': 1500, 'completion_tokens': 1200, 'total_tokens': 2700}
+            {
+                'prompt_tokens': 1500,
+                'completion_tokens': 1200,
+                'total_tokens': 2700,
+                'cost': {'amount': 12.00, 'currency': 'USD'}
+            }
         """
         return self._usage.copy()
 
