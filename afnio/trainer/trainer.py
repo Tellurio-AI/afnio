@@ -568,7 +568,7 @@ class Trainer:
                 # --- Training ---
                 agent.train()
                 for batch_idx, batch in enumerate(train_dataloader):
-                    num_samples = len(batch)
+                    num_samples = get_batch_size(batch)
                     train_samples_so_far += num_samples
                     batch_metrics = self._run_training_step_with_retries(
                         agent.training_step,
@@ -624,7 +624,7 @@ class Trainer:
                     agent.eval()
                     with hf.no_grad():
                         for val_idx, val_batch in enumerate(val_dataloader):
-                            num_val_samples = len(val_batch)
+                            num_val_samples = get_batch_size(val_batch)
                             val_samples_so_far += num_val_samples
                             val_step_out = self._run_forward_with_retries(
                                 agent.validation_step,
@@ -739,7 +739,7 @@ class Trainer:
             agent.eval()
             with hf.no_grad():
                 for val_idx, val_batch in enumerate(val_dataloader):
-                    num_val_samples = len(val_batch)
+                    num_val_samples = get_batch_size(val_batch)
                     val_samples_so_far += num_val_samples
                     val_step_out = self._run_forward_with_retries(
                         agent.validation_step,
@@ -852,7 +852,7 @@ class Trainer:
             agent.eval()
             with hf.no_grad():
                 for test_idx, test_batch in enumerate(test_dataloader):
-                    num_test_samples = len(test_batch)
+                    num_test_samples = get_batch_size(test_batch)
                     test_samples_so_far += num_test_samples
                     test_step_out = self._run_forward_with_retries(
                         agent.test_step,
@@ -903,3 +903,46 @@ class Trainer:
     # TODO: Finalize this method
     def predict(self) -> None:
         pass
+
+
+def get_batch_size(batch):
+    """
+    Returns the number of samples in a batch, supporting all DataLoader output formats:
+    - If batch is a dict: returns the length of the first value if it's a
+      list/tuple/Variable, else 1.
+    - If batch is a tuple or list: recursively checks the first element.
+    - If batch is a Variable: returns the length of its .data attribute if possible,
+      else 1.
+    - Otherwise: returns 1 (single sample).
+    Raises:
+        ValueError: If the batch is empty (size 0).
+    """
+    if isinstance(batch, dict):
+        if not batch:
+            raise ValueError("Batch is empty (size 0), which is not allowed.")
+        first_key = next(iter(batch))
+        first_value = batch[first_key]
+        if isinstance(first_value, (list, tuple)):
+            size = len(first_value)
+        elif isinstance(first_value, Variable):
+            try:
+                size = len(first_value.data)
+            except TypeError:
+                size = 1
+        else:
+            size = 1
+    elif isinstance(batch, (tuple, list)):
+        if not batch:
+            raise ValueError("Batch is empty (size 0), which is not allowed.")
+        size = get_batch_size(batch[0])
+    elif isinstance(batch, Variable):
+        try:
+            size = len(batch.data)
+        except TypeError:
+            size = 1
+    else:
+        size = 1
+
+    if size == 0:
+        raise ValueError("Batch is empty (size 0), which is not allowed.")
+    return size
