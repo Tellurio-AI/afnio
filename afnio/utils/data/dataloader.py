@@ -82,6 +82,21 @@ class DataLoader(Generic[T_co]):
         return next(self._sampler_iter)
 
     def __next__(self) -> Any:
+        """
+        Returns the next batch from the dataset, collated according to the structure
+        of the dataset's __getitem__ output.
+        Batching logic:
+        - If the dataset returns a dictionary, this method aggregates each key across
+          the batch into a list of values. For example, if each sample is
+          {'a': 'foo', 'b': 'bar'}, the batch will be {'a': [...], 'b': [...]}.
+        - If the dataset returns a tuple (e.g., (X, y)), this method recursively
+          collates each position in the tuple using `collate_tuple`, preserving
+          nested tuple structure and batching Variables as described below.
+        - If the dataset returns Variables directly, this method batches them into
+          a single Variable whose `.data` is a list of the original `.data` fields,
+          and whose `role` and `requires_grad` are taken from the first Variable.
+        - Otherwise, returns the batch as a list.
+        """
         batch = []
         for _ in range(self.batch_size):
             try:
@@ -92,33 +107,32 @@ class DataLoader(Generic[T_co]):
                     raise
                 break
 
-        # Batching logic:
-        # - If the dataset returns tuples, we transpose the batch so each position is
-        #   grouped together. For each group:
-        #     - If all elements are Variable, we create a single Variable whose data is
-        #       a list of the original .data fields, and whose role/requires_grad are
-        #       taken from the first Variable.
-        #     - Otherwise, we return a list of the grouped items.
-        # - If the dataset returns only Variables, we return a single Variable as above.
-        # - Otherwise, we return the batch as a list.
-        if batch and isinstance(batch[0], tuple):
-            transposed = list(zip(*batch))
-            collated = []
-            for items in transposed:
-                if all(isinstance(item, Variable) for item in items):
-                    first = items[0]
-                    collated.append(
-                        Variable(
-                            data=[item.data for item in items],
-                            role=first.role,
-                            requires_grad=first.requires_grad,
-                        )
-                    )
-                else:
-                    collated.append(list(items))
-            return tuple(collated)
+        # If dataset returns a dictionary, we aggregate each key across the batch
+        if (
+            batch
+            and isinstance(batch[0], dict)  # noqa: W503
+            and all(isinstance(item, dict) for item in batch)  # noqa: W503
+        ):
+            keys = batch[0].keys()
+            collated = {}
+            for key in keys:
+                values = [item[key] for item in batch]
+                collated[key] = values
+            return collated
+        # If dataset returns a tuple, we recursively collate each position in the tuple
+        if (
+            batch
+            and isinstance(batch[0], tuple)  # noqa: W503
+            and all(isinstance(item, tuple) for item in batch)  # noqa: W503
+        ):
+            return collate_tuple(batch)
 
-        if batch and all(isinstance(item, Variable) for item in batch):
+        # If dataset returns Variables, we batch them into a single Variable
+        if (
+            batch
+            and isinstance(batch[0], Variable)  # noqa: W503
+            and all(isinstance(item, Variable) for item in batch)  # noqa: W503
+        ):
             first = batch[0]
             return Variable(
                 data=[item.data for item in batch],
@@ -138,3 +152,48 @@ class DataLoader(Generic[T_co]):
             else:
                 length = ceil(length / self.batch_size)
         return length
+
+
+def collate_tuple(items):
+    """
+    Recursively collates a batch of tuples, preserving nested structure.
+
+    This function should only be called when processing batches where each element
+    is a tuple (i.e., when the dataset's __getitem__ returns tuples).
+
+    The function first transposes the batch, so that each position in the tuple is
+    grouped together. For each group:
+      - If all elements are Variables, returns a single Variable whose `.data` is a list
+        of the original `.data` fields, and whose `role` and `requires_grad` are taken
+        from the first Variable.
+      - If all elements are tuples, recursively collates them to preserve nested
+        structure.
+      - If some elements are tuples and some are not, recursively collates the tuples
+        and leaves other elements as is, preserving their position.
+      - Otherwise, returns a list of the grouped items.
+
+    This enables flexible batching for datasets that return tuples of Variables,
+    nested tuples, or mixed structures.
+    """
+    transposed = list(zip(*items))
+    collated = []
+    for group in transposed:
+        # If all are Variables, batch as Variable
+        if all(isinstance(x, Variable) for x in group):
+            first = group[0]
+            collated.append(
+                Variable(
+                    data=[x.data for x in group],
+                    role=first.role,
+                    requires_grad=first.requires_grad,
+                )
+            )
+        # If all are tuples, recurse
+        elif all(isinstance(x, tuple) for x in group):
+            collated.append(collate_tuple(group))
+        # If some are tuples and some are not, handle each element
+        else:
+            collated.append(
+                [collate_tuple([x]) if isinstance(x, tuple) else x for x in group]
+            )
+    return tuple(collated)

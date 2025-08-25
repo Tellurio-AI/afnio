@@ -55,7 +55,7 @@ def in_notebook():
         return False
 
 
-# TODO: Fix notebook behaviour, that prints logs in the wrong cell when exception occours
+# TODO: Fix notebook behaviour that prints logs in the wrong cell when exception occours
 def configure_logging(verbosity: str = "info"):
     """
     Configure logging for the afnio library.
