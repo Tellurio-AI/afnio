@@ -667,6 +667,10 @@ class Trainer:
                         for name, value in avg_val_metrics.items():
                             log(name=f"val_{name}", value=value, step=epoch_idx + 1)
 
+                # Log total cost
+                with set_logger_level("afnio.tellurio.run", logging.WARNING):
+                    log(name="total_cost($)", value=self.total_cost, step=epoch_idx + 1)
+
                 # Save checkpoint (epoch)
                 if self.enable_checkpointing:
                     self._save_checkpoint(agent, optimizer, epoch + 1)
@@ -784,6 +788,8 @@ class Trainer:
             for name, value in avg_val_metrics.items():
                 log(name=f"val_{name}", value=value)
 
+            log(name="total_cost($)", value=self.total_cost)
+
         # Return averaged metrics
         return avg_val_metrics
 
@@ -896,6 +902,8 @@ class Trainer:
         with set_logger_level("afnio.tellurio.run", logging.WARNING):
             for name, value in avg_test_metrics.items():
                 log(name=f"test_{name}", value=value)
+
+            log(name="total_cost($)", value=self.total_cost)
 
         # Return averaged metrics
         return avg_test_metrics

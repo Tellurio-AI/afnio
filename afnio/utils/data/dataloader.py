@@ -1,6 +1,7 @@
 from typing import Any, Generic, Iterable, Optional, TypeVar, Union
 
 from afnio._variable import Variable
+from afnio.tellurio._variable_registry import suppress_variable_notifications
 from afnio.utils.data.dataset import Dataset
 from afnio.utils.data.sampler import RandomSampler, Sampler, SequentialSampler
 
@@ -97,15 +98,17 @@ class DataLoader(Generic[T_co]):
           and whose `role` and `requires_grad` are taken from the first Variable.
         - Otherwise, returns the batch as a list.
         """
-        batch = []
-        for _ in range(self.batch_size):
-            try:
-                index = self._next_index()
-                batch.append(self.dataset[index])
-            except StopIteration:
-                if not batch or self.drop_last:
-                    raise
-                break
+        # Suppress notifications for individual Variables
+        with suppress_variable_notifications():
+            batch = []
+            for _ in range(self.batch_size):
+                try:
+                    index = self._next_index()
+                    batch.append(self.dataset[index])
+                except StopIteration:
+                    if not batch or self.drop_last:
+                        raise
+                    break
 
         # If dataset returns a dictionary, we aggregate each key across the batch
         if (
