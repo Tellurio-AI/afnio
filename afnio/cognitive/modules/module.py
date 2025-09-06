@@ -483,6 +483,72 @@ class Module:
             _validate_function(func)  # Validate the function before registering
             self._functions[name] = func
 
+    def register_module(self, name: str, module: Optional["Module"]) -> None:
+        r"""Add a child module to the current module.
+
+        This method explicitly adds a child module to the current module's hierarchy.
+        The child module can then be accessed as an attribute using the given name
+        and will be registered in the `_modules` dictionary.
+
+        **When to use**:
+        - Use `register_module()` when dynamically adding submodules at runtime,
+        especially when the submodule name is determined programmatically.
+        - This can be useful for creating flexible and modular architectures.
+
+        **When it's unnecessary**:
+        - Directly assigning the module to an attribute (e.g.,
+        `self.module_name = SubModule()`) automatically registers it, so using
+        `register_module()` is unnecessary in such cases.
+
+        Args:
+            name (str): Name of the child module. The child module can be accessed from
+                this module using the given name.
+            module (Module): Child module to be added to the module.
+
+        Raises:
+            TypeError: If `module` is not a subclass of `Module` or
+                if `name` is not a string.
+            KeyError: If `name` is already an attribute of the module but not
+                in `_modules`, or if `name` contains invalid characters
+                such as '.' or is empty.
+
+        Example::
+            >>> class DynamicPipeline(cog.Module):
+            >>>     def __init__(self):
+            >>>         super().__init__()
+            >>>         # Dynamically add submodules
+            >>>         for i in range(3):
+            >>>             self.register_module(f"layer_{i}", cog.Module())
+
+            >>> pipeline = DynamicPipeline()
+            >>> print(pipeline._modules.keys())
+            odict_keys(['layer_0', 'layer_1', 'layer_2'])
+
+        .. note::
+            If assigning submodules using standard attribute assignment
+            (e.g., `self.submodule = SubModule()`), calling `register_module()`
+            explicitly is not required. Direct assignment automatically registers
+            the module.
+        """
+        if not isinstance(module, Module) and module is not None:
+            raise TypeError(
+                f"'{type(module).__name__}' is not a valid Module subclass."
+            )
+        elif not isinstance(name, str):
+            raise TypeError(
+                f"Module name must be a string, but got '{type(name).__name__}'."
+            )
+        elif hasattr(self, name) and name not in self._modules:
+            raise KeyError(
+                f"Attribute '{name}' already exists and "
+                f"cannot be used as a module name."
+            )
+        elif "." in name:
+            raise KeyError(f"Module name cannot contain '.', but got: '{name}'.")
+        elif name == "":
+            raise KeyError('Module name cannot be an empty string ""')
+        self._modules[name] = module
+
     def __getattr__(self, name: str) -> Any:
         if "_parameters" in self.__dict__:
             _parameters = self.__dict__["_parameters"]
@@ -1450,72 +1516,6 @@ class Module:
                 )
             )
         return _IncompatibleKeys(missing_keys, unexpected_keys)
-
-    def register_module(self, name: str, module: Optional["Module"]) -> None:
-        r"""Add a child module to the current module.
-
-        This method explicitly adds a child module to the current module's hierarchy.
-        The child module can then be accessed as an attribute using the given name
-        and will be registered in the `_modules` dictionary.
-
-        **When to use**:
-        - Use `register_module()` when dynamically adding submodules at runtime,
-        especially when the submodule name is determined programmatically.
-        - This can be useful for creating flexible and modular architectures.
-
-        **When it's unnecessary**:
-        - Directly assigning the module to an attribute (e.g.,
-        `self.module_name = SubModule()`) automatically registers it, so using
-        `register_module()` is unnecessary in such cases.
-
-        Args:
-            name (str): Name of the child module. The child module can be accessed from
-                this module using the given name.
-            module (Module): Child module to be added to the module.
-
-        Raises:
-            TypeError: If `module` is not a subclass of `Module` or
-                if `name` is not a string.
-            KeyError: If `name` is already an attribute of the module but not
-                in `_modules`, or if `name` contains invalid characters
-                such as '.' or is empty.
-
-        Example::
-            >>> class DynamicPipeline(cog.Module):
-            >>>     def __init__(self):
-            >>>         super().__init__()
-            >>>         # Dynamically add submodules
-            >>>         for i in range(3):
-            >>>             self.register_module(f"layer_{i}", cog.Module())
-
-            >>> pipeline = DynamicPipeline()
-            >>> print(pipeline._modules.keys())
-            odict_keys(['layer_0', 'layer_1', 'layer_2'])
-
-        .. note::
-            If assigning submodules using standard attribute assignment
-            (e.g., `self.submodule = SubModule()`), calling `register_module()`
-            explicitly is not required. Direct assignment automatically registers
-            the module.
-        """
-        if not isinstance(module, Module) and module is not None:
-            raise TypeError(
-                f"'{type(module).__name__}' is not a valid Module subclass."
-            )
-        elif not isinstance(name, str):
-            raise TypeError(
-                f"Module name must be a string, but got '{type(name).__name__}'."
-            )
-        elif hasattr(self, name) and name not in self._modules:
-            raise KeyError(
-                f"Attribute '{name}' already exists and "
-                f"cannot be used as a module name."
-            )
-        elif "." in name:
-            raise KeyError(f"Module name cannot contain '.', but got: '{name}'.")
-        elif name == "":
-            raise KeyError('Module name cannot be an empty string ""')
-        self._modules[name] = module
 
     def get_extra_state(self) -> Any:
         """Return any extra state to include in the module's state_dict.
