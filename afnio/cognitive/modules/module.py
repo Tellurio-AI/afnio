@@ -107,6 +107,8 @@ class Module:
     :ivar training: Boolean represents whether this module is in training or
                     evaluation mode.
     :vartype training: bool
+    :ivar automatic_optimization: Boolean that decides whether to use automatic optimization.
+    :vartype automatic_optimization: bool
     """  # noqa: E501
 
     _version: int = 1
@@ -122,6 +124,8 @@ class Module:
     the change."""
 
     training: bool
+    automatic_optimization: bool
+    _optimizers: Optional[Union[Optimizer, List[Optimizer]]]
     _parameters: Dict[str, Optional[Parameter]]
     _buffers: Dict[str, Optional[Variable]]
     _non_persistent_buffers_set: Set[str]
@@ -141,6 +145,8 @@ class Module:
         for all other attributes.
         """
         super().__setattr__("training", True)
+        super().__setattr__("automatic_optimization", True)
+        super().__setattr__("_optimizers", None)
         super().__setattr__("_parameters", OrderedDict())
         super().__setattr__("_buffers", OrderedDict())
         super().__setattr__("_non_persistent_buffers_set", set())
@@ -2227,4 +2233,40 @@ class Module:
         """
         raise NotImplementedError(
             "You must implement configure_optimizers in your Module subclass."
+        )
+
+    def optimizers(self) -> Union[Optimizer, List[Optimizer]]:
+        r"""Returns the optimizer(s) that are being used during training. Useful for
+        manual optimization.
+
+        This method is useful for accessing the optimizer(s) configured in the
+        :meth:`configure_optimizers` method by the :meth:`~afnio.trainer.trainer.Trainer.fit`
+        method.
+
+        Returns:
+            Union[Optimizer, List[Optimizer]]: The optimizer(s) used by this module.
+
+        Example::
+
+            >>> optimizers = model.optimizers()
+            >>> for optimizer in optimizers:
+            >>>     print(optimizer)
+            TGD (
+            Parameter Group 0
+                completion_args: {'model': 'gpt-4.1'}
+                constraints: []
+                inputs: {}
+                messages: [
+                {'role': 'system', 'content': [Variable(data="Placeholder Textual Gradient Descent optimizer system prompt", role=Textual Gradient Descent optimizer system prompt, requires_grad=False)]},
+                {'role': 'user', 'content': [Variable(data="Placeholder for Textual Gradient Descent optimizer user prompt", role=Textual Gradient Descent optimizer user prompt, requires_grad=False)]}
+                ]
+                model_client: <afnio.models.openai.AsyncOpenAI object at 0x710df9c149a0>
+                momentum: 3
+            )
+        """  # noqa: E501
+        if self._optimizers is not None:
+            return self._optimizers
+        raise AttributeError(
+            "No optimizer found. Did you call `configure_optimizers()` "
+            "and did the `Trainer` set `_optimizers`?"
         )

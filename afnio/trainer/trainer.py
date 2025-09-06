@@ -188,7 +188,7 @@ class Trainer:
         if progress:
             progress.stop()
 
-    def _run_forward_with_retries(
+    def _run_fn_with_retries(
         self, func, batch, batch_idx, max_retries=3, step_name="step"
     ):
         """
@@ -209,22 +209,33 @@ class Trainer:
                 )
 
     def _run_training_step_with_retries(
-        self, func, batch, batch_idx, optimizer, max_retries=3
+        self,
+        func,
+        batch,
+        batch_idx,
+        optimizer,
+        max_retries=3,
+        automatic=True,
     ):
         for retry_count in range(1, max_retries + 1):
             try:
-                optimizer.clear_grad()
-                step_out = self._run_forward_with_retries(
-                    func,
-                    batch,
-                    batch_idx,
-                    max_retries=3,
-                    step_name="training_step",
-                )
+                if automatic:
+                    optimizer.clear_grad()
+                    step_out = self._run_fn_with_retries(
+                        func,
+                        batch,
+                        batch_idx,
+                        max_retries=3,
+                        step_name="training_step",
+                    )
+                # Retrials should be handled by the user in manual mode
+                else:
+                    step_out = func(batch, batch_idx)
                 batch_metrics = self._parse_step_metrics(step_out, "training_step")
-                _, explanation = batch_metrics["loss"]
-                explanation.backward()
-                optimizer.step()
+                if automatic:
+                    _, explanation = batch_metrics["loss"]
+                    explanation.backward()
+                    optimizer.step()
                 return batch_metrics
             except Exception as e:
                 if retry_count == max_retries:
@@ -502,6 +513,8 @@ class Trainer:
                 print(str(agent) + "\n")
 
         optimizer = agent.configure_optimizers()
+        # Set the optimizer(s) on the agent for manual optimization support
+        agent._optimizers = optimizer
 
         console = Console()
         train_len = len(train_dataloader.dataset)
@@ -576,6 +589,7 @@ class Trainer:
                         batch_idx,
                         optimizer,
                         max_retries=3,
+                        automatic=agent.automatic_optimization,
                     )
 
                     # Collect training metrics and clear LM models usage
@@ -626,7 +640,7 @@ class Trainer:
                         for val_idx, val_batch in enumerate(val_dataloader):
                             num_val_samples = get_batch_size(val_batch)
                             val_samples_so_far += num_val_samples
-                            val_step_out = self._run_forward_with_retries(
+                            val_step_out = self._run_fn_with_retries(
                                 agent.validation_step,
                                 val_batch,
                                 val_idx,
@@ -745,7 +759,7 @@ class Trainer:
                 for val_idx, val_batch in enumerate(val_dataloader):
                     num_val_samples = get_batch_size(val_batch)
                     val_samples_so_far += num_val_samples
-                    val_step_out = self._run_forward_with_retries(
+                    val_step_out = self._run_fn_with_retries(
                         agent.validation_step,
                         val_batch,
                         val_idx,
@@ -860,7 +874,7 @@ class Trainer:
                 for test_idx, test_batch in enumerate(test_dataloader):
                     num_test_samples = get_batch_size(test_batch)
                     test_samples_so_far += num_test_samples
-                    test_step_out = self._run_forward_with_retries(
+                    test_step_out = self._run_fn_with_retries(
                         agent.test_step,
                         test_batch,
                         test_idx,
