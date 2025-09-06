@@ -2127,13 +2127,16 @@ class Module:
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single training step.
+
         This method should be implemented in subclasses to define the training logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the training loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2143,6 +2146,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2152,13 +2156,16 @@ class Module:
 
     def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single validation step.
+
         This method should be implemented in subclasses to define the validation logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the validation loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2168,6 +2175,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2177,13 +2185,16 @@ class Module:
 
     def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single test step.
+
         This method should be implemented in subclasses to define the test logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the testing loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2193,6 +2204,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2202,11 +2214,14 @@ class Module:
 
     def configure_optimizers(self) -> Optimizer:
         r"""Configure and return the optimizer for this module.
+
         This method should be implemented in subclasses to define the optimizer
         configuration. It is called by the :class:`~afnio.trainer.trainer.Trainer`
         to set up the optimization routine.
+
         Returns:
             Optimizer: An instance of an optimizer configured for this module.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
