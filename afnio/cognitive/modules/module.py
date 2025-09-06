@@ -107,6 +107,8 @@ class Module:
     :ivar training: Boolean represents whether this module is in training or
                     evaluation mode.
     :vartype training: bool
+    :ivar automatic_optimization: Boolean that decides whether to use automatic optimization.
+    :vartype automatic_optimization: bool
     """  # noqa: E501
 
     _version: int = 1
@@ -122,6 +124,8 @@ class Module:
     the change."""
 
     training: bool
+    automatic_optimization: bool
+    _optimizers: Optional[Union[Optimizer, List[Optimizer]]]
     _parameters: Dict[str, Optional[Parameter]]
     _buffers: Dict[str, Optional[Variable]]
     _non_persistent_buffers_set: Set[str]
@@ -141,6 +145,8 @@ class Module:
         for all other attributes.
         """
         super().__setattr__("training", True)
+        super().__setattr__("automatic_optimization", True)
+        super().__setattr__("_optimizers", None)
         super().__setattr__("_parameters", OrderedDict())
         super().__setattr__("_buffers", OrderedDict())
         super().__setattr__("_non_persistent_buffers_set", set())
@@ -482,6 +488,72 @@ class Module:
         else:
             _validate_function(func)  # Validate the function before registering
             self._functions[name] = func
+
+    def register_module(self, name: str, module: Optional["Module"]) -> None:
+        r"""Add a child module to the current module.
+
+        This method explicitly adds a child module to the current module's hierarchy.
+        The child module can then be accessed as an attribute using the given name
+        and will be registered in the `_modules` dictionary.
+
+        **When to use**:
+        - Use `register_module()` when dynamically adding submodules at runtime,
+        especially when the submodule name is determined programmatically.
+        - This can be useful for creating flexible and modular architectures.
+
+        **When it's unnecessary**:
+        - Directly assigning the module to an attribute (e.g.,
+        `self.module_name = SubModule()`) automatically registers it, so using
+        `register_module()` is unnecessary in such cases.
+
+        Args:
+            name (str): Name of the child module. The child module can be accessed from
+                this module using the given name.
+            module (Module): Child module to be added to the module.
+
+        Raises:
+            TypeError: If `module` is not a subclass of `Module` or
+                if `name` is not a string.
+            KeyError: If `name` is already an attribute of the module but not
+                in `_modules`, or if `name` contains invalid characters
+                such as '.' or is empty.
+
+        Example::
+            >>> class DynamicPipeline(cog.Module):
+            >>>     def __init__(self):
+            >>>         super().__init__()
+            >>>         # Dynamically add submodules
+            >>>         for i in range(3):
+            >>>             self.register_module(f"layer_{i}", cog.Module())
+
+            >>> pipeline = DynamicPipeline()
+            >>> print(pipeline._modules.keys())
+            odict_keys(['layer_0', 'layer_1', 'layer_2'])
+
+        .. note::
+            If assigning submodules using standard attribute assignment
+            (e.g., `self.submodule = SubModule()`), calling `register_module()`
+            explicitly is not required. Direct assignment automatically registers
+            the module.
+        """
+        if not isinstance(module, Module) and module is not None:
+            raise TypeError(
+                f"'{type(module).__name__}' is not a valid Module subclass."
+            )
+        elif not isinstance(name, str):
+            raise TypeError(
+                f"Module name must be a string, but got '{type(name).__name__}'."
+            )
+        elif hasattr(self, name) and name not in self._modules:
+            raise KeyError(
+                f"Attribute '{name}' already exists and "
+                f"cannot be used as a module name."
+            )
+        elif "." in name:
+            raise KeyError(f"Module name cannot contain '.', but got: '{name}'.")
+        elif name == "":
+            raise KeyError('Module name cannot be an empty string ""')
+        self._modules[name] = module
 
     def __getattr__(self, name: str) -> Any:
         if "_parameters" in self.__dict__:
@@ -1451,72 +1523,6 @@ class Module:
             )
         return _IncompatibleKeys(missing_keys, unexpected_keys)
 
-    def register_module(self, name: str, module: Optional["Module"]) -> None:
-        r"""Add a child module to the current module.
-
-        This method explicitly adds a child module to the current module's hierarchy.
-        The child module can then be accessed as an attribute using the given name
-        and will be registered in the `_modules` dictionary.
-
-        **When to use**:
-        - Use `register_module()` when dynamically adding submodules at runtime,
-        especially when the submodule name is determined programmatically.
-        - This can be useful for creating flexible and modular architectures.
-
-        **When it's unnecessary**:
-        - Directly assigning the module to an attribute (e.g.,
-        `self.module_name = SubModule()`) automatically registers it, so using
-        `register_module()` is unnecessary in such cases.
-
-        Args:
-            name (str): Name of the child module. The child module can be accessed from
-                this module using the given name.
-            module (Module): Child module to be added to the module.
-
-        Raises:
-            TypeError: If `module` is not a subclass of `Module` or
-                if `name` is not a string.
-            KeyError: If `name` is already an attribute of the module but not
-                in `_modules`, or if `name` contains invalid characters
-                such as '.' or is empty.
-
-        Example::
-            >>> class DynamicPipeline(cog.Module):
-            >>>     def __init__(self):
-            >>>         super().__init__()
-            >>>         # Dynamically add submodules
-            >>>         for i in range(3):
-            >>>             self.register_module(f"layer_{i}", cog.Module())
-
-            >>> pipeline = DynamicPipeline()
-            >>> print(pipeline._modules.keys())
-            odict_keys(['layer_0', 'layer_1', 'layer_2'])
-
-        .. note::
-            If assigning submodules using standard attribute assignment
-            (e.g., `self.submodule = SubModule()`), calling `register_module()`
-            explicitly is not required. Direct assignment automatically registers
-            the module.
-        """
-        if not isinstance(module, Module) and module is not None:
-            raise TypeError(
-                f"'{type(module).__name__}' is not a valid Module subclass."
-            )
-        elif not isinstance(name, str):
-            raise TypeError(
-                f"Module name must be a string, but got '{type(name).__name__}'."
-            )
-        elif hasattr(self, name) and name not in self._modules:
-            raise KeyError(
-                f"Attribute '{name}' already exists and "
-                f"cannot be used as a module name."
-            )
-        elif "." in name:
-            raise KeyError(f"Module name cannot contain '.', but got: '{name}'.")
-        elif name == "":
-            raise KeyError('Module name cannot be an empty string ""')
-        self._modules[name] = module
-
     def get_extra_state(self) -> Any:
         """Return any extra state to include in the module's state_dict.
 
@@ -2127,13 +2133,16 @@ class Module:
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single training step.
+
         This method should be implemented in subclasses to define the training logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the training loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2143,6 +2152,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2152,13 +2162,16 @@ class Module:
 
     def validation_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single validation step.
+
         This method should be implemented in subclasses to define the validation logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the validation loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2168,6 +2181,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2177,13 +2191,16 @@ class Module:
 
     def test_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
         r"""Perform a single test step.
+
         This method should be implemented in subclasses to define the test logic.
         It is called by the :class:`~afnio.trainer.trainer.Trainer`
         during the testing loop.
+
         Args:
             batch: The output of your data iterable,
                 normally a :class:`~afnio.util.data.DataLoader`.
             batch_idx: The index of this batch.
+
         Returns:
             - Tuple[Variable, Variable]: The loss as a tuple of two Variables:
                 - The evaluation `score` (a Variable containing the loss value).
@@ -2193,6 +2210,7 @@ class Module:
                 the key ``'loss'`` containing a tuple of two Variables
                 (`score` and `explanation`).
             - None: Skip to the next batch.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
@@ -2202,14 +2220,53 @@ class Module:
 
     def configure_optimizers(self) -> Optimizer:
         r"""Configure and return the optimizer for this module.
+
         This method should be implemented in subclasses to define the optimizer
         configuration. It is called by the :class:`~afnio.trainer.trainer.Trainer`
         to set up the optimization routine.
+
         Returns:
             Optimizer: An instance of an optimizer configured for this module.
+
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
         raise NotImplementedError(
             "You must implement configure_optimizers in your Module subclass."
+        )
+
+    def optimizers(self) -> Union[Optimizer, List[Optimizer]]:
+        r"""Returns the optimizer(s) that are being used during training. Useful for
+        manual optimization.
+
+        This method is useful for accessing the optimizer(s) configured in the
+        :meth:`configure_optimizers` method by the :meth:`~afnio.trainer.trainer.Trainer.fit`
+        method.
+
+        Returns:
+            Union[Optimizer, List[Optimizer]]: The optimizer(s) used by this module.
+
+        Example::
+
+            >>> optimizers = model.optimizers()
+            >>> for optimizer in optimizers:
+            >>>     print(optimizer)
+            TGD (
+            Parameter Group 0
+                completion_args: {'model': 'gpt-4.1'}
+                constraints: []
+                inputs: {}
+                messages: [
+                {'role': 'system', 'content': [Variable(data="Placeholder Textual Gradient Descent optimizer system prompt", role=Textual Gradient Descent optimizer system prompt, requires_grad=False)]},
+                {'role': 'user', 'content': [Variable(data="Placeholder for Textual Gradient Descent optimizer user prompt", role=Textual Gradient Descent optimizer user prompt, requires_grad=False)]}
+                ]
+                model_client: <afnio.models.openai.AsyncOpenAI object at 0x710df9c149a0>
+                momentum: 3
+            )
+        """  # noqa: E501
+        if self._optimizers is not None:
+            return self._optimizers
+        raise AttributeError(
+            "No optimizer found. Did you call `configure_optimizers()` "
+            "and did the `Trainer` set `_optimizers`?"
         )
