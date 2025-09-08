@@ -7,8 +7,9 @@ import httpx
 from openai import DEFAULT_MAX_RETRIES, NOT_GIVEN, NotGiven
 from openai import AsyncOpenAI as AsyncOpenAICli
 from openai import OpenAI as OpenAICli
+from openai._types import SequenceNotStr
 from openai.types.chat import (
-    ChatCompletionReasoningEffort,
+    ChatCompletionAudioParam,
     completion_create_params,
 )
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
@@ -21,9 +22,13 @@ from openai.types.chat.chat_completion_stream_options_param import (
 from openai.types.chat.chat_completion_tool_choice_option_param import (
     ChatCompletionToolChoiceOptionParam,
 )
-from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
+from openai.types.chat.chat_completion_tool_union_param import (
+    ChatCompletionToolUnionParam,
+)
 from openai.types.chat_model import ChatModel
 from openai.types.completion_usage import CompletionUsage
+from openai.types.shared.reasoning_effort import ReasoningEffort
+from openai.types.shared_params.metadata import Metadata
 from typing_extensions import Literal
 
 from .model import ChatCompletionModel, EmbeddingModel, TextCompletionModel
@@ -150,24 +155,41 @@ class OpenAI(
         *,
         messages: Iterable[ChatCompletionMessageParam],
         model: Union[str, ChatModel],
+        audio: Union[Optional[ChatCompletionAudioParam], NotGiven] = NOT_GIVEN,
         frequency_penalty: Union[Optional[float], NotGiven] = NOT_GIVEN,
+        function_call: Union[
+            completion_create_params.FunctionCall, NotGiven
+        ] = NOT_GIVEN,
+        functions: Union[
+            Iterable[completion_create_params.Function], NotGiven
+        ] = NOT_GIVEN,
         logit_bias: Union[Optional[Dict[str, int]], NotGiven] = NOT_GIVEN,
         logprobs: Union[Optional[bool], NotGiven] = NOT_GIVEN,
         max_completion_tokens: Union[Optional[int], NotGiven] = NOT_GIVEN,
-        metadata: Union[Optional[Dict[str, str]], NotGiven] = NOT_GIVEN,
+        max_tokens: Union[Optional[int], NotGiven] = NOT_GIVEN,
+        metadata: Union[Optional[Metadata], NotGiven] = NOT_GIVEN,
+        modalities: Union[
+            Optional[List[Literal["text", "audio"]]], NotGiven
+        ] = NOT_GIVEN,
         n: Union[Optional[int], NotGiven] = NOT_GIVEN,
         parallel_tool_calls: Union[bool, NotGiven] = NOT_GIVEN,
         prediction: Union[
             Optional[ChatCompletionPredictionContentParam], NotGiven
         ] = NOT_GIVEN,
         presence_penalty: Union[Optional[float], NotGiven] = NOT_GIVEN,
-        reasoning_effort: Union[ChatCompletionReasoningEffort, NotGiven] = NOT_GIVEN,
+        prompt_cache_key: Union[str, NotGiven] = NOT_GIVEN,
+        reasoning_effort: Union[ReasoningEffort, NotGiven] = NOT_GIVEN,
         response_format: Union[
             completion_create_params.ResponseFormat, NotGiven
         ] = NOT_GIVEN,
+        safety_identifier: Union[str, NotGiven] = NOT_GIVEN,
         seed: Union[Optional[int], NotGiven] = NOT_GIVEN,
-        service_tier: Union[Optional[Literal["auto", "default"]], NotGiven] = NOT_GIVEN,
-        stop: Union[Union[Optional[str], List[str]], NotGiven] = NOT_GIVEN,
+        service_tier: Union[
+            Optional[Literal["auto", "default", "flex", "scale", "priority"]], NotGiven
+        ] = NOT_GIVEN,
+        stop: Union[
+            Union[Optional[str], SequenceNotStr[str], None], NotGiven
+        ] = NOT_GIVEN,
         store: Union[Optional[bool], NotGiven] = NOT_GIVEN,
         # TODO: `stream` can be useful during inference, but forbid during training or backpropagation
         stream: Union[Optional[Literal[False]], NotGiven] = NOT_GIVEN,
@@ -176,10 +198,16 @@ class OpenAI(
         ] = NOT_GIVEN,
         temperature: Union[Optional[float], NotGiven] = NOT_GIVEN,
         tool_choice: Union[ChatCompletionToolChoiceOptionParam, NotGiven] = NOT_GIVEN,
-        tools: Union[Iterable[ChatCompletionToolParam], NotGiven] = NOT_GIVEN,
+        tools: Union[Iterable[ChatCompletionToolUnionParam], NotGiven] = NOT_GIVEN,
         top_logprobs: Union[Optional[int], NotGiven] = NOT_GIVEN,
         top_p: Union[Optional[float], NotGiven] = NOT_GIVEN,
         user: Union[str, NotGiven] = NOT_GIVEN,
+        verbosity: Union[
+            Optional[Literal["low", "medium", "high"]], NotGiven
+        ] = NOT_GIVEN,
+        web_search_options: Union[
+            completion_create_params.WebSearchOptions, NotGiven
+        ] = NOT_GIVEN,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Optional[Headers] = None,
@@ -188,163 +216,230 @@ class OpenAI(
         timeout: Optional[Union[float, httpx.Timeout, NotGiven]] = NOT_GIVEN,
     ) -> str:
         """Synchronously creates a model response for the given chat conversation.
-
         Learn more in the
-        [text generation](https://platform.openai.com/docs/guides/text-generation)
-        and [chat](https://platform.openai.com/docs/api-reference/chat) guides.
+        [text generation](https://platform.openai.com/docs/guides/text-generation),
+        [vision](https://platform.openai.com/docs/guides/vision), and
+        [audio](https://platform.openai.com/docs/guides/audio) guides.
 
         Parameter support can differ depending on the model used to generate the
-        response, particularly for newer reasoning models.
+        response, particularly for newer reasoning models. Parameters that are only
+        supported for reasoning models are noted below. For the current state of
+        unsupported parameters in reasoning models,
+        [refer to the reasoning guide](https://platform.openai.com/docs/guides/reasoning).
 
         Args:
-          messages: A list of messages comprising the conversation so far. Depending on
-            the [model](https://platform.openai.com/docs/models) you use, different
-            message types (modalities) are supported. Refer to
-            [text](https://platform.openai.com/docs/guides/text-generation).
+          messages: A list of messages comprising the conversation so far. Depending on the
+              [model](https://platform.openai.com/docs/models) you use, different message
+              types (modalities) are supported, like
+              [text](https://platform.openai.com/docs/guides/text-generation),
+              [images](https://platform.openai.com/docs/guides/vision), and
+              [audio](https://platform.openai.com/docs/guides/audio).
 
-          model: ID of the model to use. See the
-            [model endpoint compatibility](https://platform.openai.com/docs/models#model-endpoint-compatibility)
-            table for details on which models work with the Chat API.
+          model: Model ID used to generate the response, like `gpt-4o` or `o3`. OpenAI offers a
+              wide range of models with different capabilities, performance characteristics,
+              and price points. Refer to the
+              [model guide](https://platform.openai.com/docs/models) to browse and compare
+              available models.
 
-          frequency_penalty: Number between -2.0 and 2.0. Positive values penalize new
-            tokens based on their existing frequency in the text so far, decreasing the
-            model's likelihood to repeat the same line verbatim.
+          audio: Parameters for audio output. Required when audio output is requested with
+              `modalities: ["audio"]`.
+              [Learn more](https://platform.openai.com/docs/guides/audio).
 
-          logit_bias: Modify the likelihood of specified tokens appearing in the
-            completion.
+          frequency_penalty: Number between -2.0 and 2.0. Positive values penalize new tokens based on their
+              existing frequency in the text so far, decreasing the model's likelihood to
+              repeat the same line verbatim.
 
-            Accepts a JSON object that maps tokens (specified by their token ID in the
-            tokenizer) to an associated bias value from -100 to 100. Mathematically, the
-            bias is added to the logits generated by the model prior to sampling. The
-            exact effect will vary per model, but values between -1 and 1 should
-            decrease or increase likelihood of selection; values like -100 or 100 should
-            result in a ban or exclusive selection of the relevant token.
+          function_call: Deprecated in favor of `tool_choice`.
 
-          logprobs: Whether to return log probabilities of the output tokens or not. If
-            true, returns the log probabilities of each output token returned in the
-            `content` of `message`.
+              Controls which (if any) function is called by the model.
 
-          max_completion_tokens: An upper bound for the number of tokens that can be
-            generated for a completion, including visible output tokens and
-            [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+              `none` means the model will not call a function and instead generates a message.
 
-          metadata: Developer-defined tags and values used for filtering completions in
-            the [dashboard](https://platform.openai.com/chat-completions).
+              `auto` means the model can pick between generating a message or calling a
+              function.
 
-          n: How many chat completion choices to generate for each input message. Note
-            that you will be charged based on the number of generated tokens across all
-            of the choices. Keep `n` as `1` to minimize costs.
+              Specifying a particular function via `{"name": "my_function"}` forces the model
+              to call that function.
+
+              `none` is the default when no functions are present. `auto` is the default if
+              functions are present.
+
+          functions: Deprecated in favor of `tools`.
+
+              A list of functions the model may generate JSON inputs for.
+
+          logit_bias: Modify the likelihood of specified tokens appearing in the completion.
+
+              Accepts a JSON object that maps tokens (specified by their token ID in the
+              tokenizer) to an associated bias value from -100 to 100. Mathematically, the
+              bias is added to the logits generated by the model prior to sampling. The exact
+              effect will vary per model, but values between -1 and 1 should decrease or
+              increase likelihood of selection; values like -100 or 100 should result in a ban
+              or exclusive selection of the relevant token.
+
+          logprobs: Whether to return log probabilities of the output tokens or not. If true,
+              returns the log probabilities of each output token returned in the `content` of
+              `message`.
+
+          max_completion_tokens: An upper bound for the number of tokens that can be generated for a completion,
+              including visible output tokens and
+              [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+
+          max_tokens: The maximum number of [tokens](/tokenizer) that can be generated in the chat
+              completion. This value can be used to control
+              [costs](https://openai.com/api/pricing/) for text generated via API.
+
+              This value is now deprecated in favor of `max_completion_tokens`, and is not
+              compatible with
+              [o-series models](https://platform.openai.com/docs/guides/reasoning).
+
+          metadata: Set of 16 key-value pairs that can be attached to an object. This can be useful
+              for storing additional information about the object in a structured format, and
+              querying for objects via API or the dashboard.
+
+              Keys are strings with a maximum length of 64 characters. Values are strings with
+              a maximum length of 512 characters.
+
+          modalities: Output types that you would like the model to generate. Most models are capable
+              of generating text, which is the default:
+
+              `["text"]`
+
+              The `gpt-4o-audio-preview` model can also be used to
+              [generate audio](https://platform.openai.com/docs/guides/audio). To request that
+              this model generate both text and audio responses, you can use:
+
+              `["text", "audio"]`
+
+          n: How many chat completion choices to generate for each input message. Note that
+              you will be charged based on the number of generated tokens across all of the
+              choices. Keep `n` as `1` to minimize costs.
 
           parallel_tool_calls: Whether to enable
-            [parallel function calling](https://platform.openai.com/docs/guides/function-calling#configuring-parallel-function-calling)
-            during tool use.
+              [parallel function calling](https://platform.openai.com/docs/guides/function-calling#configuring-parallel-function-calling)
+              during tool use.
 
-          prediction: Static predicted output content, such as the content of a text
-            file that is being regenerated.
+          prediction: Static predicted output content, such as the content of a text file that is
+              being regenerated.
 
-          presence_penalty: Number between -2.0 and 2.0. Positive values penalize new
-            tokens based on whether they appear in the text so far, increasing the
-            model's likelihood to talk about new topics.
+          presence_penalty: Number between -2.0 and 2.0. Positive values penalize new tokens based on
+              whether they appear in the text so far, increasing the model's likelihood to
+              talk about new topics.
 
-          reasoning_effort: **o1 models only**
+          prompt_cache_key: Used by OpenAI to cache responses for similar requests to optimize your cache
+              hit rates. Replaces the `user` field.
+              [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
 
-            Constrains effort on reasoning for
-            [reasoning models](https://platform.openai.com/docs/guides/reasoning).
-            Currently supported values are `low`, `medium`, and `high`. Reducing
-            reasoning effort can result in faster responses and fewer tokens used on
-            reasoning in a response.
+          reasoning_effort: Constrains effort on reasoning for
+              [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+              supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+              effort can result in faster responses and fewer tokens used on reasoning in a
+              response.
 
           response_format: An object specifying the format that the model must output.
 
-            Setting to `{ "type": "json_schema", "json_schema": {...} }` enables
-            Structured Outputs which ensures the model will match your supplied
-            JSON schema. Learn more in the
-            [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+              Setting to `{ "type": "json_schema", "json_schema": {...} }` enables Structured
+              Outputs which ensures the model will match your supplied JSON schema. Learn more
+              in the
+              [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
 
-            Setting to `{ "type": "json_object" }` enables JSON mode, which ensures the
-            message the model generates is valid JSON.
+              Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+              ensures the message the model generates is valid JSON. Using `json_schema` is
+              preferred for models that support it.
 
-            **Important:** when using JSON mode, you **must** also instruct the model to
-            produce JSON yourself via a system or user message. Without this, the model
-            may generate an unending stream of whitespace until the generation reaches
-            the token limit, resulting in a long-running and seemingly "stuck" request.
-            Also note that the message content may be partially cut off if
-            `finish_reason="length"`, which indicates the generation exceeded
-            `max_tokens` or the conversation exceeded the max context length.
+          safety_identifier: A stable identifier used to help detect users of your application that may be
+              violating OpenAI's usage policies. The IDs should be a string that uniquely
+              identifies each user. We recommend hashing their username or email address, in
+              order to avoid sending us any identifying information.
+              [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
 
-          seed: This feature is in Beta. If specified, our system will make a best
-            effort to sample deterministically, such that repeated requests with the
-            same `seed` and parameters should return the same result. Determinism is not
-            guaranteed, and you should refer to the `system_fingerprint` response
-            parameter to monitor changes in the backend.
+          seed: This feature is in Beta. If specified, our system will make a best effort to
+              sample deterministically, such that repeated requests with the same `seed` and
+              parameters should return the same result. Determinism is not guaranteed, and you
+              should refer to the `system_fingerprint` response parameter to monitor changes
+              in the backend.
 
-          service_tier: Specifies the latency tier to use for processing the request.
-            This parameter is relevant for customers subscribed to the scale tier
-            service:
+          service_tier: Specifies the processing type used for serving the request.
 
-            - If set to 'auto', and the Project is Scale tier enabled, the system will
-              utilize scale tier credits until they are exhausted.
-            - If set to 'auto', and the Project is not Scale tier enabled, the request
-              will be processed using the default service tier with a lower uptime SLA
-              and no latency guarentee.
-            - If set to 'default', the request will be processed using the default
-              service tier with a lower uptime SLA and no latency guarentee.
-            - When not set, the default behavior is 'auto'.
+              - If set to 'auto', then the request will be processed with the service tier
+                configured in the Project settings. Unless otherwise configured, the Project
+                will use 'default'.
+              - If set to 'default', then the request will be processed with the standard
+                pricing and performance for the selected model.
+              - If set to '[flex](https://platform.openai.com/docs/guides/flex-processing)' or
+                '[priority](https://openai.com/api-priority-processing/)', then the request
+                will be processed with the corresponding service tier.
+              - When not set, the default behavior is 'auto'.
 
-            When this parameter is set, the response body will include the
-            `service_tier` utilized.
+              When the `service_tier` parameter is set, the response body will include the
+              `service_tier` value based on the processing mode actually used to serve the
+              request. This response value may be different from the value set in the
+              parameter.
 
-          stop: Up to 4 sequences where the API will stop generating further tokens.
+          stop: Not supported with latest reasoning models `o3` and `o4-mini`.
 
-          store: Whether or not to store the output of this chat completion request for
-            use in our
-            [model distillation](https://platform.openai.com/docs/guides/distillation)
-            or [evals](https://platform.openai.com/docs/guides/evals) products.
+              Up to 4 sequences where the API will stop generating further tokens. The
+              returned text will not contain the stop sequence.
 
-          stream: If set, partial message deltas will be sent, like in ChatGPT. Tokens
-            will be sent as data-only
-            [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#Event_stream_format)
-            as they become available, with the stream terminated by a `data: [DONE]`
-            message.
-            [Example Python code](https://cookbook.openai.com/examples/how_to_stream_completions).
+          store: Whether or not to store the output of this chat completion request for use in
+              our [model distillation](https://platform.openai.com/docs/guides/distillation)
+              or [evals](https://platform.openai.com/docs/guides/evals) products.
 
-          stream_options: Options for streaming response. Only set this when you set
-            `stream: true`.
+              Supports text and image inputs. Note: image inputs over 8MB will be dropped.
 
-          temperature: What sampling temperature to use, between 0 and 2. Higher values
-            like 0.8 will make the output more random, while lower values like 0.2 will
-            make it more focused and deterministic. We generally recommend altering this
-            or `top_p` but not both.
+          stream: If set to true, the model response data will be streamed to the client as it is
+              generated using
+              [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#Event_stream_format).
+              See the
+              [Streaming section below](https://platform.openai.com/docs/api-reference/chat/streaming)
+              for more information, along with the
+              [streaming responses](https://platform.openai.com/docs/guides/streaming-responses)
+              guide for more information on how to handle the streaming events.
 
-          tool_choice: Controls which (if any) tool is called by the model. `none` means
-            the model will not call any tool and instead generates a message. `auto`
-            means the model can pick between generating a message or calling one or more
-            tools. `required` means the model must call one or more tools. Specifying a
-            particular tool via
-            `{"type": "function", "function": {"name": "my_function"}}` forces the model
-            to call that tool.
+          stream_options: Options for streaming response. Only set this when you set `stream: true`.
 
-            `none` is the default when no tools are present. `auto` is the default if
-            tools are present.
+          temperature: What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
+              make the output more random, while lower values like 0.2 will make it more
+              focused and deterministic. We generally recommend altering this or `top_p` but
+              not both.
 
-          tools: A list of tools the model may call. Currently, only functions are
-            supported as a tool. Use this to provide a list of functions the model may
-            generate JSON inputs for. A max of 128 functions are supported.
+          tool_choice: Controls which (if any) tool is called by the model. `none` means the model will
+              not call any tool and instead generates a message. `auto` means the model can
+              pick between generating a message or calling one or more tools. `required` means
+              the model must call one or more tools. Specifying a particular tool via
+              `{"type": "function", "function": {"name": "my_function"}}` forces the model to
+              call that tool.
 
-          top_logprobs: An integer between 0 and 20 specifying the number of most likely
-            tokens to return at each token position, each with an associated log
-            probability. `logprobs` must be set to `true` if this parameter is used.
+              `none` is the default when no tools are present. `auto` is the default if tools
+              are present.
 
-          top_p: An alternative to sampling with temperature, called nucleus sampling,
-            where the model considers the results of the tokens with top_p probability
-            mass. So 0.1 means only the tokens comprising the top 10% probability mass
-            are considered.
+          tools: A list of tools the model may call. You can provide either
+              [custom tools](https://platform.openai.com/docs/guides/function-calling#custom-tools)
+              or [function tools](https://platform.openai.com/docs/guides/function-calling).
 
-            We generally recommend altering this or `temperature` but not both.
+          top_logprobs: An integer between 0 and 20 specifying the number of most likely tokens to
+              return at each token position, each with an associated log probability.
+              `logprobs` must be set to `true` if this parameter is used.
 
-          user: A unique identifier representing your end-user, which can help OpenAI to
-            monitor and detect abuse.
-            [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#end-user-ids).
+          top_p: An alternative to sampling with temperature, called nucleus sampling, where the
+              model considers the results of the tokens with top_p probability mass. So 0.1
+              means only the tokens comprising the top 10% probability mass are considered.
+
+              We generally recommend altering this or `temperature` but not both.
+
+          user: This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+              `prompt_cache_key` instead to maintain caching optimizations. A stable
+              identifier for your end-users. Used to boost cache hit rates by better bucketing
+              similar requests and to help OpenAI detect and prevent abuse.
+              [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+
+          verbosity: Constrains the verbosity of the model's response. Lower values will result in
+              more concise responses, while higher values will result in more verbose
+              responses. Currently supported values are `low`, `medium`, and `high`.
+
+          web_search_options: This tool searches the web for relevant results to use in a response. Learn more
+              about the
+              [web search tool](https://platform.openai.com/docs/guides/tools-web-search?api-mode=chat).
 
           extra_headers: Send extra headers
 
@@ -352,8 +447,7 @@ class OpenAI(
 
           extra_body: Add additional JSON properties to the request
 
-          timeout: Override the client-level default timeout for this request, in
-            seconds
+          timeout: Override the client-level default timeout for this request, in seconds
         """  # noqa: E501
         # TODO: handle `n > 1`` that returns multiple completions
         if isinstance(n, int) and n > 1:
@@ -362,17 +456,24 @@ class OpenAI(
         response = self._client.chat.completions.create(
             messages=messages,
             model=model,
+            audio=audio,
             frequency_penalty=frequency_penalty,
+            function_call=function_call,
+            functions=functions,
             logit_bias=logit_bias,
             logprobs=logprobs,
             max_completion_tokens=max_completion_tokens,
+            max_tokens=max_tokens,
             metadata=metadata,
+            modalities=modalities,
             n=n,
             parallel_tool_calls=parallel_tool_calls,
             prediction=prediction,
             presence_penalty=presence_penalty,
+            prompt_cache_key=prompt_cache_key,
             reasoning_effort=reasoning_effort,
             response_format=response_format,
+            safety_identifier=safety_identifier,
             seed=seed,
             service_tier=service_tier,
             stop=stop,
@@ -385,6 +486,8 @@ class OpenAI(
             top_logprobs=top_logprobs,
             top_p=top_p,
             user=user,
+            verbosity=verbosity,
+            web_search_options=web_search_options,
             extra_headers=extra_headers,
             extra_query=extra_query,
             extra_body=extra_body,
@@ -545,24 +648,41 @@ class AsyncOpenAI(
         *,
         messages: Iterable[ChatCompletionMessageParam],
         model: Union[str, ChatModel],
+        audio: Union[Optional[ChatCompletionAudioParam], NotGiven] = NOT_GIVEN,
         frequency_penalty: Union[Optional[float], NotGiven] = NOT_GIVEN,
+        function_call: Union[
+            completion_create_params.FunctionCall, NotGiven
+        ] = NOT_GIVEN,
+        functions: Union[
+            Iterable[completion_create_params.Function], NotGiven
+        ] = NOT_GIVEN,
         logit_bias: Union[Optional[Dict[str, int]], NotGiven] = NOT_GIVEN,
         logprobs: Union[Optional[bool], NotGiven] = NOT_GIVEN,
         max_completion_tokens: Union[Optional[int], NotGiven] = NOT_GIVEN,
-        metadata: Union[Optional[Dict[str, str]], NotGiven] = NOT_GIVEN,
+        max_tokens: Union[Optional[int], NotGiven] = NOT_GIVEN,
+        metadata: Union[Optional[Metadata], NotGiven] = NOT_GIVEN,
+        modalities: Union[
+            Optional[List[Literal["text", "audio"]]], NotGiven
+        ] = NOT_GIVEN,
         n: Union[Optional[int], NotGiven] = NOT_GIVEN,
         parallel_tool_calls: Union[bool, NotGiven] = NOT_GIVEN,
         prediction: Union[
             Optional[ChatCompletionPredictionContentParam], NotGiven
         ] = NOT_GIVEN,
         presence_penalty: Union[Optional[float], NotGiven] = NOT_GIVEN,
-        reasoning_effort: Union[ChatCompletionReasoningEffort, NotGiven] = NOT_GIVEN,
+        prompt_cache_key: Union[str, NotGiven] = NOT_GIVEN,
+        reasoning_effort: Union[ReasoningEffort, NotGiven] = NOT_GIVEN,
         response_format: Union[
             completion_create_params.ResponseFormat, NotGiven
         ] = NOT_GIVEN,
+        safety_identifier: Union[str, NotGiven] = NOT_GIVEN,
         seed: Union[Optional[int], NotGiven] = NOT_GIVEN,
-        service_tier: Union[Optional[Literal["auto", "default"]], NotGiven] = NOT_GIVEN,
-        stop: Union[Union[Optional[str], List[str]], NotGiven] = NOT_GIVEN,
+        service_tier: Union[
+            Optional[Literal["auto", "default", "flex", "scale", "priority"]], NotGiven
+        ] = NOT_GIVEN,
+        stop: Union[
+            Union[Optional[str], SequenceNotStr[str], None], NotGiven
+        ] = NOT_GIVEN,
         store: Union[Optional[bool], NotGiven] = NOT_GIVEN,
         # TODO: `stream` can be useful during inference, but forbid during training or backpropagation
         stream: Union[Optional[Literal[False]], NotGiven] = NOT_GIVEN,
@@ -571,10 +691,16 @@ class AsyncOpenAI(
         ] = NOT_GIVEN,
         temperature: Union[Optional[float], NotGiven] = NOT_GIVEN,
         tool_choice: Union[ChatCompletionToolChoiceOptionParam, NotGiven] = NOT_GIVEN,
-        tools: Union[Iterable[ChatCompletionToolParam], NotGiven] = NOT_GIVEN,
+        tools: Union[Iterable[ChatCompletionToolUnionParam], NotGiven] = NOT_GIVEN,
         top_logprobs: Union[Optional[int], NotGiven] = NOT_GIVEN,
         top_p: Union[Optional[float], NotGiven] = NOT_GIVEN,
         user: Union[str, NotGiven] = NOT_GIVEN,
+        verbosity: Union[
+            Optional[Literal["low", "medium", "high"]], NotGiven
+        ] = NOT_GIVEN,
+        web_search_options: Union[
+            completion_create_params.WebSearchOptions, NotGiven
+        ] = NOT_GIVEN,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Optional[Headers] = None,
@@ -583,163 +709,230 @@ class AsyncOpenAI(
         timeout: Optional[Union[float, httpx.Timeout, NotGiven]] = NOT_GIVEN,
     ) -> str:
         """Asynchronously creates a model response for the given chat conversation.
-
         Learn more in the
-        [text generation](https://platform.openai.com/docs/guides/text-generation)
-        and [chat](https://platform.openai.com/docs/api-reference/chat) guides.
+        [text generation](https://platform.openai.com/docs/guides/text-generation),
+        [vision](https://platform.openai.com/docs/guides/vision), and
+        [audio](https://platform.openai.com/docs/guides/audio) guides.
 
         Parameter support can differ depending on the model used to generate the
-        response, particularly for newer reasoning models.
+        response, particularly for newer reasoning models. Parameters that are only
+        supported for reasoning models are noted below. For the current state of
+        unsupported parameters in reasoning models,
+        [refer to the reasoning guide](https://platform.openai.com/docs/guides/reasoning).
 
         Args:
-          messages: A list of messages comprising the conversation so far. Depending on
-            the [model](https://platform.openai.com/docs/models) you use, different
-            message types (modalities) are supported. Refer to
-            [text](https://platform.openai.com/docs/guides/text-generation).
+          messages: A list of messages comprising the conversation so far. Depending on the
+              [model](https://platform.openai.com/docs/models) you use, different message
+              types (modalities) are supported, like
+              [text](https://platform.openai.com/docs/guides/text-generation),
+              [images](https://platform.openai.com/docs/guides/vision), and
+              [audio](https://platform.openai.com/docs/guides/audio).
 
-          model: ID of the model to use. See the
-            [model endpoint compatibility](https://platform.openai.com/docs/models#model-endpoint-compatibility)
-            table for details on which models work with the Chat API.
+          model: Model ID used to generate the response, like `gpt-4o` or `o3`. OpenAI offers a
+              wide range of models with different capabilities, performance characteristics,
+              and price points. Refer to the
+              [model guide](https://platform.openai.com/docs/models) to browse and compare
+              available models.
 
-          frequency_penalty: Number between -2.0 and 2.0. Positive values penalize new
-            tokens based on their existing frequency in the text so far, decreasing the
-            model's likelihood to repeat the same line verbatim.
+          audio: Parameters for audio output. Required when audio output is requested with
+              `modalities: ["audio"]`.
+              [Learn more](https://platform.openai.com/docs/guides/audio).
 
-          logit_bias: Modify the likelihood of specified tokens appearing in the
-            completion.
+          frequency_penalty: Number between -2.0 and 2.0. Positive values penalize new tokens based on their
+              existing frequency in the text so far, decreasing the model's likelihood to
+              repeat the same line verbatim.
 
-            Accepts a JSON object that maps tokens (specified by their token ID in the
-            tokenizer) to an associated bias value from -100 to 100. Mathematically, the
-            bias is added to the logits generated by the model prior to sampling. The
-            exact effect will vary per model, but values between -1 and 1 should
-            decrease or increase likelihood of selection; values like -100 or 100 should
-            result in a ban or exclusive selection of the relevant token.
+          function_call: Deprecated in favor of `tool_choice`.
 
-          logprobs: Whether to return log probabilities of the output tokens or not. If
-            true, returns the log probabilities of each output token returned in the
-            `content` of `message`.
+              Controls which (if any) function is called by the model.
 
-          max_completion_tokens: An upper bound for the number of tokens that can be
-            generated for a completion, including visible output tokens and
-            [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+              `none` means the model will not call a function and instead generates a message.
 
-          metadata: Developer-defined tags and values used for filtering completions in
-            the [dashboard](https://platform.openai.com/chat-completions).
+              `auto` means the model can pick between generating a message or calling a
+              function.
 
-          n: How many chat completion choices to generate for each input message. Note
-            that you will be charged based on the number of generated tokens across all
-            of the choices. Keep `n` as `1` to minimize costs.
+              Specifying a particular function via `{"name": "my_function"}` forces the model
+              to call that function.
+
+              `none` is the default when no functions are present. `auto` is the default if
+              functions are present.
+
+          functions: Deprecated in favor of `tools`.
+
+              A list of functions the model may generate JSON inputs for.
+
+          logit_bias: Modify the likelihood of specified tokens appearing in the completion.
+
+              Accepts a JSON object that maps tokens (specified by their token ID in the
+              tokenizer) to an associated bias value from -100 to 100. Mathematically, the
+              bias is added to the logits generated by the model prior to sampling. The exact
+              effect will vary per model, but values between -1 and 1 should decrease or
+              increase likelihood of selection; values like -100 or 100 should result in a ban
+              or exclusive selection of the relevant token.
+
+          logprobs: Whether to return log probabilities of the output tokens or not. If true,
+              returns the log probabilities of each output token returned in the `content` of
+              `message`.
+
+          max_completion_tokens: An upper bound for the number of tokens that can be generated for a completion,
+              including visible output tokens and
+              [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+
+          max_tokens: The maximum number of [tokens](/tokenizer) that can be generated in the chat
+              completion. This value can be used to control
+              [costs](https://openai.com/api/pricing/) for text generated via API.
+
+              This value is now deprecated in favor of `max_completion_tokens`, and is not
+              compatible with
+              [o-series models](https://platform.openai.com/docs/guides/reasoning).
+
+          metadata: Set of 16 key-value pairs that can be attached to an object. This can be useful
+              for storing additional information about the object in a structured format, and
+              querying for objects via API or the dashboard.
+
+              Keys are strings with a maximum length of 64 characters. Values are strings with
+              a maximum length of 512 characters.
+
+          modalities: Output types that you would like the model to generate. Most models are capable
+              of generating text, which is the default:
+
+              `["text"]`
+
+              The `gpt-4o-audio-preview` model can also be used to
+              [generate audio](https://platform.openai.com/docs/guides/audio). To request that
+              this model generate both text and audio responses, you can use:
+
+              `["text", "audio"]`
+
+          n: How many chat completion choices to generate for each input message. Note that
+              you will be charged based on the number of generated tokens across all of the
+              choices. Keep `n` as `1` to minimize costs.
 
           parallel_tool_calls: Whether to enable
-            [parallel function calling](https://platform.openai.com/docs/guides/function-calling#configuring-parallel-function-calling)
-            during tool use.
+              [parallel function calling](https://platform.openai.com/docs/guides/function-calling#configuring-parallel-function-calling)
+              during tool use.
 
-          prediction: Static predicted output content, such as the content of a text
-            file that is being regenerated.
+          prediction: Static predicted output content, such as the content of a text file that is
+              being regenerated.
 
-          presence_penalty: Number between -2.0 and 2.0. Positive values penalize new
-            tokens based on whether they appear in the text so far, increasing the
-            model's likelihood to talk about new topics.
+          presence_penalty: Number between -2.0 and 2.0. Positive values penalize new tokens based on
+              whether they appear in the text so far, increasing the model's likelihood to
+              talk about new topics.
 
-          reasoning_effort: **o1 models only**
+          prompt_cache_key: Used by OpenAI to cache responses for similar requests to optimize your cache
+              hit rates. Replaces the `user` field.
+              [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
 
-            Constrains effort on reasoning for
-            [reasoning models](https://platform.openai.com/docs/guides/reasoning).
-            Currently supported values are `low`, `medium`, and `high`. Reducing
-            reasoning effort can result in faster responses and fewer tokens used on
-            reasoning in a response.
+          reasoning_effort: Constrains effort on reasoning for
+              [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+              supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+              effort can result in faster responses and fewer tokens used on reasoning in a
+              response.
 
           response_format: An object specifying the format that the model must output.
 
-            Setting to `{ "type": "json_schema", "json_schema": {...} }` enables
-            Structured Outputs which ensures the model will match your supplied
-            JSON schema. Learn more in the
-            [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+              Setting to `{ "type": "json_schema", "json_schema": {...} }` enables Structured
+              Outputs which ensures the model will match your supplied JSON schema. Learn more
+              in the
+              [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
 
-            Setting to `{ "type": "json_object" }` enables JSON mode, which ensures the
-            message the model generates is valid JSON.
+              Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+              ensures the message the model generates is valid JSON. Using `json_schema` is
+              preferred for models that support it.
 
-            **Important:** when using JSON mode, you **must** also instruct the model to
-            produce JSON yourself via a system or user message. Without this, the model
-            may generate an unending stream of whitespace until the generation reaches
-            the token limit, resulting in a long-running and seemingly "stuck" request.
-            Also note that the message content may be partially cut off if
-            `finish_reason="length"`, which indicates the generation exceeded
-            `max_tokens` or the conversation exceeded the max context length.
+          safety_identifier: A stable identifier used to help detect users of your application that may be
+              violating OpenAI's usage policies. The IDs should be a string that uniquely
+              identifies each user. We recommend hashing their username or email address, in
+              order to avoid sending us any identifying information.
+              [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
 
-          seed: This feature is in Beta. If specified, our system will make a best
-            effort to sample deterministically, such that repeated requests with the
-            same `seed` and parameters should return the same result. Determinism is not
-            guaranteed, and you should refer to the `system_fingerprint` response
-            parameter to monitor changes in the backend.
+          seed: This feature is in Beta. If specified, our system will make a best effort to
+              sample deterministically, such that repeated requests with the same `seed` and
+              parameters should return the same result. Determinism is not guaranteed, and you
+              should refer to the `system_fingerprint` response parameter to monitor changes
+              in the backend.
 
-          service_tier: Specifies the latency tier to use for processing the request.
-            This parameter is relevant for customers subscribed to the scale tier
-            service:
+          service_tier: Specifies the processing type used for serving the request.
 
-            - If set to 'auto', and the Project is Scale tier enabled, the system will
-              utilize scale tier credits until they are exhausted.
-            - If set to 'auto', and the Project is not Scale tier enabled, the request
-              will be processed using the default service tier with a lower uptime SLA
-              and no latency guarentee.
-            - If set to 'default', the request will be processed using the default
-              service tier with a lower uptime SLA and no latency guarentee.
-            - When not set, the default behavior is 'auto'.
+              - If set to 'auto', then the request will be processed with the service tier
+                configured in the Project settings. Unless otherwise configured, the Project
+                will use 'default'.
+              - If set to 'default', then the request will be processed with the standard
+                pricing and performance for the selected model.
+              - If set to '[flex](https://platform.openai.com/docs/guides/flex-processing)' or
+                '[priority](https://openai.com/api-priority-processing/)', then the request
+                will be processed with the corresponding service tier.
+              - When not set, the default behavior is 'auto'.
 
-            When this parameter is set, the response body will include the
-            `service_tier` utilized.
+              When the `service_tier` parameter is set, the response body will include the
+              `service_tier` value based on the processing mode actually used to serve the
+              request. This response value may be different from the value set in the
+              parameter.
 
-          stop: Up to 4 sequences where the API will stop generating further tokens.
+          stop: Not supported with latest reasoning models `o3` and `o4-mini`.
 
-          store: Whether or not to store the output of this chat completion request for
-            use in our
-            [model distillation](https://platform.openai.com/docs/guides/distillation)
-            or [evals](https://platform.openai.com/docs/guides/evals) products.
+              Up to 4 sequences where the API will stop generating further tokens. The
+              returned text will not contain the stop sequence.
 
-          stream: If set, partial message deltas will be sent, like in ChatGPT. Tokens
-            will be sent as data-only
-            [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#Event_stream_format)
-            as they become available, with the stream terminated by a `data: [DONE]`
-            message.
-            [Example Python code](https://cookbook.openai.com/examples/how_to_stream_completions).
+          store: Whether or not to store the output of this chat completion request for use in
+              our [model distillation](https://platform.openai.com/docs/guides/distillation)
+              or [evals](https://platform.openai.com/docs/guides/evals) products.
 
-          stream_options: Options for streaming response. Only set this when you set
-            `stream: true`.
+              Supports text and image inputs. Note: image inputs over 8MB will be dropped.
 
-          temperature: What sampling temperature to use, between 0 and 2. Higher values
-            like 0.8 will make the output more random, while lower values like 0.2 will
-            make it more focused and deterministic. We generally recommend altering this
-            or `top_p` but not both.
+          stream: If set to true, the model response data will be streamed to the client as it is
+              generated using
+              [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#Event_stream_format).
+              See the
+              [Streaming section below](https://platform.openai.com/docs/api-reference/chat/streaming)
+              for more information, along with the
+              [streaming responses](https://platform.openai.com/docs/guides/streaming-responses)
+              guide for more information on how to handle the streaming events.
 
-          tool_choice: Controls which (if any) tool is called by the model. `none` means
-            the model will not call any tool and instead generates a message. `auto`
-            means the model can pick between generating a message or calling one or more
-            tools. `required` means the model must call one or more tools. Specifying a
-            particular tool via
-            `{"type": "function", "function": {"name": "my_function"}}` forces the model
-            to call that tool.
+          stream_options: Options for streaming response. Only set this when you set `stream: true`.
 
-            `none` is the default when no tools are present. `auto` is the default if
-            tools are present.
+          temperature: What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
+              make the output more random, while lower values like 0.2 will make it more
+              focused and deterministic. We generally recommend altering this or `top_p` but
+              not both.
 
-          tools: A list of tools the model may call. Currently, only functions are
-            supported as a tool. Use this to provide a list of functions the model may
-            generate JSON inputs for. A max of 128 functions are supported.
+          tool_choice: Controls which (if any) tool is called by the model. `none` means the model will
+              not call any tool and instead generates a message. `auto` means the model can
+              pick between generating a message or calling one or more tools. `required` means
+              the model must call one or more tools. Specifying a particular tool via
+              `{"type": "function", "function": {"name": "my_function"}}` forces the model to
+              call that tool.
 
-          top_logprobs: An integer between 0 and 20 specifying the number of most likely
-            tokens to return at each token position, each with an associated log
-            probability. `logprobs` must be set to `true` if this parameter is used.
+              `none` is the default when no tools are present. `auto` is the default if tools
+              are present.
 
-          top_p: An alternative to sampling with temperature, called nucleus sampling,
-            where the model considers the results of the tokens with top_p probability
-            mass. So 0.1 means only the tokens comprising the top 10% probability mass
-            are considered.
+          tools: A list of tools the model may call. You can provide either
+              [custom tools](https://platform.openai.com/docs/guides/function-calling#custom-tools)
+              or [function tools](https://platform.openai.com/docs/guides/function-calling).
 
-            We generally recommend altering this or `temperature` but not both.
+          top_logprobs: An integer between 0 and 20 specifying the number of most likely tokens to
+              return at each token position, each with an associated log probability.
+              `logprobs` must be set to `true` if this parameter is used.
 
-          user: A unique identifier representing your end-user, which can help OpenAI to
-            monitor and detect abuse.
-            [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#end-user-ids).
+          top_p: An alternative to sampling with temperature, called nucleus sampling, where the
+              model considers the results of the tokens with top_p probability mass. So 0.1
+              means only the tokens comprising the top 10% probability mass are considered.
+
+              We generally recommend altering this or `temperature` but not both.
+
+          user: This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+              `prompt_cache_key` instead to maintain caching optimizations. A stable
+              identifier for your end-users. Used to boost cache hit rates by better bucketing
+              similar requests and to help OpenAI detect and prevent abuse.
+              [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+
+          verbosity: Constrains the verbosity of the model's response. Lower values will result in
+              more concise responses, while higher values will result in more verbose
+              responses. Currently supported values are `low`, `medium`, and `high`.
+
+          web_search_options: This tool searches the web for relevant results to use in a response. Learn more
+              about the
+              [web search tool](https://platform.openai.com/docs/guides/tools-web-search?api-mode=chat).
 
           extra_headers: Send extra headers
 
@@ -747,8 +940,7 @@ class AsyncOpenAI(
 
           extra_body: Add additional JSON properties to the request
 
-          timeout: Override the client-level default timeout for this request, in
-            seconds
+          timeout: Override the client-level default timeout for this request, in seconds
         """  # noqa: E501
         # TODO: handle `n > 1`` that returns multiple completions
         if isinstance(n, int) and n > 1:
@@ -757,17 +949,24 @@ class AsyncOpenAI(
         response = await self._aclient.chat.completions.create(
             messages=messages,
             model=model,
+            audio=audio,
             frequency_penalty=frequency_penalty,
+            function_call=function_call,
+            functions=functions,
             logit_bias=logit_bias,
             logprobs=logprobs,
             max_completion_tokens=max_completion_tokens,
+            max_tokens=max_tokens,
             metadata=metadata,
+            modalities=modalities,
             n=n,
             parallel_tool_calls=parallel_tool_calls,
             prediction=prediction,
             presence_penalty=presence_penalty,
+            prompt_cache_key=prompt_cache_key,
             reasoning_effort=reasoning_effort,
             response_format=response_format,
+            safety_identifier=safety_identifier,
             seed=seed,
             service_tier=service_tier,
             stop=stop,
@@ -780,6 +979,8 @@ class AsyncOpenAI(
             top_logprobs=top_logprobs,
             top_p=top_p,
             user=user,
+            verbosity=verbosity,
+            web_search_options=web_search_options,
             extra_headers=extra_headers,
             extra_query=extra_query,
             extra_body=extra_body,
