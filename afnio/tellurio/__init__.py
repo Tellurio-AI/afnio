@@ -6,6 +6,7 @@ from afnio.logging_config import configure_logging
 from afnio.tellurio._auth import _login
 from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import _event_loop_thread, run_in_background_loop
+from afnio.tellurio._variable_registry import suppress_variable_notifications
 from afnio.tellurio.client import TellurioClient
 from afnio.tellurio.run import init
 from afnio.tellurio.run_context import get_active_run
@@ -113,7 +114,13 @@ def _shutdown():
 atexit.register(_shutdown)
 
 
-__all__ = ["configure_logging", "init", "log", "login"]
+__all__ = [
+    "configure_logging",
+    "init",
+    "log",
+    "login",
+    "suppress_variable_notifications",
+]
 
 # Please keep this list sorted
 assert __all__ == sorted(__all__)
