@@ -6,8 +6,9 @@ import pytest
 from slugify import slugify
 
 from afnio.tellurio import utils as tellurio_utils
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import _event_loop_thread
-from afnio.tellurio.client import TellurioClient, get_default_client
+from afnio.tellurio.client import TellurioClient
 from afnio.tellurio.project import Project, create_project, delete_project, get_project
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
@@ -129,7 +130,7 @@ def shutdown_event_loop_thread():
 
     # Close the WebSocket client if it exists
     try:
-        _, ws_client = get_default_client()
+        _, ws_client = get_default_clients()
         if ws_client and ws_client.connection:
             # Use the event loop thread to close the client
             _event_loop_thread.run(ws_client.close())

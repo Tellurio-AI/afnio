@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from afnio.logging_config import configure_logging
 from afnio.tellurio.utils import get_config_path
-from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
 # Configure logging
 configure_logging()
@@ -16,10 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables from .env
 load_dotenv()
-
-# Define the global default client instances
-_default_client = None
-_default_ws_client = None
 
 
 def save_username(username):
@@ -305,27 +300,3 @@ class TellurioClient:
             raise
 
         return None
-
-
-def get_default_client() -> tuple[TellurioClient, TellurioWebSocketClient]:
-    """
-    Returns the global default TellurioClient instance.
-
-    This function initializes a global instance of the TellurioClient if it does not
-    already exist and returns it. The global instance can be used as a singleton for
-    interacting with the backend.
-
-    Returns:
-        TellurioClient: The global default TellurioClient instance.
-    """
-    global _default_client, _default_ws_client
-
-    if _default_client is None:
-        # Initialize the default HTTP client
-        _default_client = TellurioClient()
-
-    if _default_ws_client is None:
-        # Initialize default WebSocket client
-        _default_ws_client = TellurioWebSocketClient()
-
-    return _default_client, _default_ws_client

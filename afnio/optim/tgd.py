@@ -9,11 +9,11 @@ from afnio._utils import (
 from afnio._variable import Variable
 from afnio.logging_config import configure_logging
 from afnio.models import ChatCompletionModel
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import (
     suppress_variable_notifications,
 )
-from afnio.tellurio.client import get_default_client
 
 from .optimizer import Optimizer, ParamsT, _extract_variable_ids, _wait_for_variable
 
@@ -182,7 +182,7 @@ def tgd(
         logger.debug(f"Marked variable {p.variable_id!r} as pending for data update.")
 
     try:
-        _, ws_client = get_default_client()
+        _, ws_client = get_default_clients()
 
         payload = {
             "params": _serialize_arg(params),

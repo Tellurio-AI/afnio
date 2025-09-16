@@ -5,12 +5,12 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import (
     is_variable_notify_suppressed,
     register_variable,
 )
-from afnio.tellurio.client import get_default_client
 
 # Import `Node` only for type hints to avoid runtime circular imports; `TYPE_CHECKING`
 # ensures it's available for static analysis (e.g., mypy) without executing at runtime.
@@ -150,7 +150,7 @@ class Variable:
                 from afnio.cognitive.parameter import Parameter
 
                 # Get the singleton websocket client
-                _, ws_client = get_default_client()
+                _, ws_client = get_default_clients()
 
                 payload = {
                     "data": self.data,
@@ -646,7 +646,7 @@ class Variable:
         }
 
         try:
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
             response = run_in_background_loop(
                 ws_client.call("update_variable", payload)
             )
@@ -717,7 +717,7 @@ class Variable:
         }
 
         try:
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
             response = run_in_background_loop(ws_client.call("append_grad", payload))
             if "error" in response:
                 raise RuntimeError(

@@ -2,7 +2,8 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from afnio.tellurio.client import TellurioClient, get_default_client
+from afnio.tellurio._client_manager import get_default_clients
+from afnio.tellurio.client import TellurioClient
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def get_project(
     Raises:
         Exception: If an unexpected error occurs during the request.
     """
-    client = client or get_default_client()[0]
+    client = client or get_default_clients()[0]
 
     # Define the endpoint
     endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/"
@@ -136,7 +137,7 @@ def create_project(
     Returns:
         Project: A Project object representing the created project.
     """
-    client = client or get_default_client()[0]
+    client = client or get_default_clients()[0]
 
     # Define the endpoint and payload
     endpoint = f"/api/v0/{namespace_slug}/projects/"
@@ -203,7 +204,7 @@ def delete_project(
     Returns:
         None
     """
-    client = client or get_default_client()[0]
+    client = client or get_default_clients()[0]
 
     # Define the endpoint
     endpoint = f"/api/v0/{namespace_slug}/projects/{project_slug}/"

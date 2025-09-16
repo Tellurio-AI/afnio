@@ -1,15 +1,14 @@
 import atexit
 import logging
-import os
 from typing import Any, Optional
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._auth import _login
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import _event_loop_thread, run_in_background_loop
+from afnio.tellurio.client import TellurioClient
+from afnio.tellurio.run import init
 from afnio.tellurio.run_context import get_active_run
-from afnio.tellurio.websocket_client import TellurioWebSocketClient
-
-from .client import InvalidAPIKeyError, TellurioClient, get_default_client
-from .run import init
 
 # Configure logging
 configure_logging()
@@ -18,23 +17,24 @@ logger = logging.getLogger(__name__)
 
 def login(api_key: str = None, relogin=False):
     """
-    Logs in the user using an API key and verifies its validity.
+    Logs in the user and establishes both HTTP and WebSocket connections to the
+    Tellurio Studio backend.
 
-    This method allows the user to provide an API key or retrieve a stored API key
-    from the system. It verifies the API key by calling the backend and securely
-    stores it using the `keyring` library if valid. It also establishes a WebSocket
-    connection for further communication.
+    This function authenticates the user using an API key, which can be provided
+    directly, via the `TELLURIO_API_KEY` environment variable, or retrieved from the
+    local keyring. On successful authentication, it establishes a WebSocket connection
+    for real-time communication and stores the API key securely for future use.
 
     Args:
-        api_key (str, optional): The user's API key. If not provided, the method
-            attempts to retrieve a stored API key from the local system.
-        relogin (bool): If True, forces a re-login and requires the user to provide
-            a new API key.
+        api_key (str, optional): The user's API key. If not provided, the function will
+            attempt to use the `TELLURIO_API_KEY` environment variable. If that is not
+            set, it will look for a stored API key in the local keyring.
+        relogin (bool): If True, forces a re-login and requires the user to provide a
+            new API key (either directly or via the environment variable).
 
     Returns:
-        dict: A dictionary containing the user's email, username, and session ID
-        for the WebSocket connection.
-        Example:
+        dict: A dictionary containing the user's email, username, and session ID for the
+        WebSocket connection. Example:
             {
                 "email": "user@example.com",
                 "username": "user123",
@@ -42,71 +42,26 @@ def login(api_key: str = None, relogin=False):
             }
 
     Raises:
-        ValueError: If the API key is invalid or not provided during re-login.
+        ValueError: If the API key is not provided during first login or re-login.
+        InvalidAPIKeyError: If the backend rejects the API key.
+        RuntimeError: If the WebSocket connection fails.
+        Exception: For any other unexpected errors during login.
+
+    Notes:
+        - On first login, the API key is stored securely in the local keyring for
+            future use.
+        - If relogin is True, a new API key must be provided (directly or via
+            environment variable).
+        - This function is synchronous and can be called from both scripts and
+            interactive environments.
     """
+    # Get the default HTTP and WebSocket clients
+    # Login in a separate step below to pass parameters
+    client, ws_client = get_default_clients(login=False)
 
-    async def _close_ws_connection(ws_client: TellurioWebSocketClient, reason: str):
-        """
-        Closes the WebSocket connection and logs the reason.
-
-        Args:
-            ws_client (TellurioWebSocketClient): The WebSocket client instance.
-            reason (str): The reason for closing the connection.
-        """
-        if ws_client.connection:
-            await ws_client.close()
-            logger.info(f"WebSocket connection closed due to {reason}.")
-
-    async def _login():
-        # Get the default HTTP and WebSocket clients
-        client, ws_client = get_default_client()
-
-        try:
-            # Perform HTTP login
-            login_info = client.login(api_key=api_key, relogin=relogin)
-            logger.debug(f"HTTP login successful for user '{login_info['username']}'.")
-
-            # Perform WebSocket login
-            ws_info = await ws_client.connect(api_key=client.api_key)
-            logger.debug(
-                f"WebSocket connection established "
-                f"with session ID '{ws_info['session_id']}'."
-            )
-
-            base_url = os.getenv(
-                "TELLURIO_BACKEND_HTTP_BASE_URL", "https://platform.tellurio.ai"
-            )
-            logger.info(
-                "Currently logged in as %r to %r. "
-                "Use `afnio login --relogin` to force relogin.",
-                login_info["username"],
-                base_url,
-                extra={"colors": {0: "yellow", 1: "green"}},
-            )
-
-            return {
-                "email": login_info.get("email"),
-                "username": login_info.get("username"),
-                "session_id": ws_info.get("session_id"),
-            }
-        except ValueError as e:
-            logger.error(f"HTTP login failed: {e}")
-            await _close_ws_connection(ws_client, "missing API key")
-            raise
-        except InvalidAPIKeyError as e:
-            logger.error(f"HTTP login failed: {e}")
-            await _close_ws_connection(ws_client, "invalid API key")
-            raise
-        except RuntimeError as e:
-            logger.error(f"WebSocket connection error: {e}")
-            await _close_ws_connection(ws_client, "runtime error")
-            raise
-        except Exception as e:
-            logger.error(f"Login failed: {e}")
-            await _close_ws_connection(ws_client, "an unexpected error")
-            raise
-
-    return run_in_background_loop(_login())  # Handle both sync and async contexts
+    return run_in_background_loop(
+        _login(client=client, ws_client=ws_client, api_key=api_key, relogin=relogin)
+    )  # Handle both sync and async contexts
 
 
 def log(
@@ -136,7 +91,7 @@ def _close_singleton_ws_client():
     that the WebSocket connection is properly closed and resources are cleaned up.
     """
     try:
-        _, ws_client = get_default_client()
+        _, ws_client = get_default_clients()
         if ws_client and ws_client.connection:
             run_in_background_loop(ws_client.close())
     except Exception as e:
