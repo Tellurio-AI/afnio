@@ -10,9 +10,9 @@ from afnio.tellurio.run import init
 
 
 @pytest.mark.asyncio
-async def test_login_success():
+async def test_login_valid_api_key(setup_keyring):
     """
-    Test the login function with real HTTP and WebSocket connections.
+    Test the login function with a valid `api_key` parameter.
     """
     api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
 
@@ -26,7 +26,7 @@ async def test_login_success():
 
 
 @pytest.mark.asyncio
-async def test_login_invalid_api_key():
+async def test_login_invalid_api_key(setup_keyring):
     """
     Test the login function with an invalid API key.
     This should raise a ValueError.
@@ -41,7 +41,51 @@ async def test_login_invalid_api_key():
         login(api_key=api_key)
 
 
-def test_close_singleton_ws_client_direct():
+def test_login_with_valid_env_var(monkeypatch, setup_keyring):
+    """
+    Test that login works when the API key is provided via the TELLURIO_API_KEY
+    environment variable.
+    """
+    api_key = os.environ["TEST_ACCOUNT_API_KEY"]
+    monkeypatch.setenv("TELLURIO_API_KEY", api_key)
+    # Do not pass api_key argument, so only env var is used
+    result = login()
+    assert "email" in result
+    assert "username" in result
+    assert "session_id" in result
+
+
+def test_api_key_login_stores_keyring(setup_keyring):
+    """
+    Test that a successful login via api_key parameter stores the key in the keyring.
+    """
+    api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
+    service = os.getenv("KEYRING_SERVICE_NAME", "Tellurio")
+
+    result = login(api_key=api_key)
+    # Now the key should be stored in the in-memory keyring
+    username = result["username"]
+    stored_api_key = setup_keyring.get_password(service, username)
+    assert stored_api_key == api_key
+
+
+def test_env_var_login_stores_keyring(monkeypatch, setup_keyring):
+    """
+    Test that a successful login via TELLURIO_API_KEY stores the key in the keyring.
+    """
+    api_key = os.getenv("TEST_ACCOUNT_API_KEY", "valid_api_key")
+    service = os.getenv("KEYRING_SERVICE_NAME", "Tellurio")
+
+    api_key = os.environ["TEST_ACCOUNT_API_KEY"]
+    monkeypatch.setenv("TELLURIO_API_KEY", api_key)
+    result = login()
+    # Now the key should be stored in the in-memory keyring
+    username = result["username"]
+    stored_api_key = setup_keyring.get_password(service, username)
+    assert stored_api_key == api_key
+
+
+def test_close_singleton_ws_client_direct(setup_keyring):
     """
     Test that the singleton WebSocket client is closed directly.
     """
@@ -57,7 +101,7 @@ def test_close_singleton_ws_client_direct():
     assert ws_client.connection is None
 
 
-def test_implicit_login_with_stored_key():
+def test_implicit_login_with_stored_key(setup_keyring):
     """
     Test that after first login, a new process can create a Run
     and logs in implicitly using the stored API key in the keyring.

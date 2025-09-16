@@ -2,21 +2,8 @@ import os
 
 import pytest
 from click.testing import CliRunner
-from keyring import set_keyring
 
 from afnio.tellurio.cli import cli
-from tests.utils import InMemoryKeyring
-
-
-@pytest.fixture(autouse=True)
-def setup_keyring():
-    """
-    Fixture to use the in-memory keyring backend for tests.
-    Ensures tests do not interact with the real keyring.
-    """
-    test_keyring = InMemoryKeyring()
-    set_keyring(test_keyring)
-    yield test_keyring
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,6 @@ async def _close_ws_connection(ws_client: TellurioWebSocketClient, reason: str):
         logger.info(f"WebSocket connection closed due to {reason}.")
 
 
-# TODO: Handle `TELLURIO_API_KEY` env var for non-interactive login
 async def _login(
     client: TellurioClient,
     ws_client: TellurioWebSocketClient,

@@ -104,15 +104,20 @@ class TellurioClient:
         """
         Logs in the user using an API key and verifies its validity.
 
-        This method allows the user to provide an API key or retrieve a stored API key
-        from the system. It verifies the API key by calling the backend and securely
-        stores it using the `keyring` library if valid.
+        Credential resolution order:
+        1. If `api_key` is provided, it is used.
+        2. Otherwise, if the `TELLURIO_API_KEY` environment variable is set, it is used.
+        3. Otherwise, if not relogin, attempts to load a stored API key from
+            the keyring.
+
+        If authentication succeeds and the API key was provided directly (not via
+        keyring), it is stored in the keyring for future use.
 
         Args:
             api_key (str, optional): The user's API key. If not provided, the method
-                attempts to retrieve a stored API key from the local system.
-            relogin (bool): If True, forces a re-login and requires the user to provide
-                a new API key.
+                attempts to use the `TELLURIO_API_KEY` environment variable, then the
+                keyring.
+            relogin (bool): If True, forces a re-login and requires a new API key.
 
         Returns:
             dict: A dictionary containing the user's email and username.
@@ -120,9 +125,12 @@ class TellurioClient:
         Raises:
             ValueError: If the API key is invalid or not provided during re-login.
         """
-        # Use the provided API key if passed, otherwise check for stored key
+        # Use the provided API key if passed, otherwise check env var, then keyring
         if api_key:
             self.api_key = api_key
+        elif os.getenv("TELLURIO_API_KEY"):
+            self.api_key = os.getenv("TELLURIO_API_KEY")
+            logger.info("Using API key from TELLURIO_API_KEY environment variable.")
         elif not relogin:
             username = load_username()
             self.api_key = keyring.get_password(self.service_name, username)
@@ -143,7 +151,7 @@ class TellurioClient:
             logger.debug(f"API key is valid for user '{username}'.")
 
             # Save the API key securely only if it was provided and is valid
-            if api_key:
+            if api_key or os.getenv("TELLURIO_API_KEY"):
                 keyring.set_password(
                     self.service_name, response_data["username"], self.api_key
                 )

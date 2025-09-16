@@ -3,6 +3,7 @@ import tempfile
 from typing import List
 
 import pytest
+from keyring import set_keyring
 from slugify import slugify
 
 from afnio.tellurio import utils as tellurio_utils
@@ -10,6 +11,7 @@ from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import _event_loop_thread
 from afnio.tellurio.client import TellurioClient
 from afnio.tellurio.project import Project, create_project, delete_project, get_project
+from tests.utils import InMemoryKeyring
 
 TEST_ORG_DISPLAY_NAME = os.getenv("TEST_ORG_DISPLAY_NAME", "Tellurio Test")
 TEST_ORG_SLUG = os.getenv("TEST_ORG_SLUG", "tellurio-test")
@@ -139,3 +141,14 @@ def shutdown_event_loop_thread():
 
     # Now shut down the event loop thread
     _event_loop_thread.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def setup_keyring():
+    """
+    Fixture to use the in-memory keyring backend for tests.
+    Ensures tests do not interact with the real keyring.
+    """
+    test_keyring = InMemoryKeyring()
+    set_keyring(test_keyring)
+    yield test_keyring
