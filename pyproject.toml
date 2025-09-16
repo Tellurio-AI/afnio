@@ -1,6 +1,6 @@
 [project]
 name = "afnio"
-version = "0.2.7"
+version = "0.2.8"
 description = "Afnio Python library and Tellurio Studio CLI tool"
 authors = [
     { name = "Tellurio", email = "contact@tellurio.ai" }
