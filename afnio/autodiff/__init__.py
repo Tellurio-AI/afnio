@@ -4,9 +4,9 @@ from typing import Optional
 
 from afnio._utils import _serialize_arg
 from afnio.logging_config import configure_logging
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._variable_registry import get_variable
-from afnio.tellurio.client import get_default_client
 
 from .grad_mode import is_grad_enabled, no_grad, set_grad_enabled
 from .utils import (
@@ -98,7 +98,7 @@ def backward(
     # Send the RPC call to the server
     try:
         # Get the singleton websocket client
-        _, ws_client = get_default_client()
+        _, ws_client = get_default_clients()
 
         # Fetch all Variables which gradients will be computed during backpropagation
         # and mark them as pending for grad update

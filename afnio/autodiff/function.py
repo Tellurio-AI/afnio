@@ -5,8 +5,8 @@ from afnio._utils import _serialize_arg
 from afnio.autodiff.grad_mode import is_grad_enabled
 from afnio.autodiff.utils import _deserialize_fn_output
 from afnio.logging_config import configure_logging
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
-from afnio.tellurio.client import get_default_client
 
 # Configure logging
 configure_logging()
@@ -152,7 +152,7 @@ class Function:
         # Send the RPC call to the server
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             payload = {
                 "function_name": function_name,

@@ -10,7 +10,8 @@ from typing import Any, Optional
 
 from slugify import slugify
 
-from afnio.tellurio.client import TellurioClient, get_default_client
+from afnio.tellurio._client_manager import get_default_clients
+from afnio.tellurio.client import TellurioClient
 from afnio.tellurio.project import create_project, get_project
 from afnio.tellurio.run_context import set_active_run
 
@@ -115,7 +116,7 @@ class Run:
         Raises:
             Exception: If the PATCH request fails.
         """
-        client = client or get_default_client()[0]
+        client = client or get_default_clients()[0]
 
         namespace_slug = self.organization.slug if self.organization else None
         project_slug = self.project.slug if self.project else None
@@ -170,7 +171,7 @@ class Run:
                 auto-compute it.
             client (TellurioClient, optional): The client to use for the request.
         """
-        client = client or get_default_client()[0]
+        client = client or get_default_clients()[0]
 
         namespace_slug = self.organization.slug if self.organization else None
         project_slug = self.project.slug if self.project else None
@@ -247,7 +248,7 @@ def init(
     Returns:
         Run: A Run object representing the created run.
     """
-    client = client or get_default_client()[0]
+    client = client or get_default_clients()[0]
 
     # Generate the project's slug from its name
     project_slug = slugify(project_display_name)

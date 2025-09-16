@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 from afnio.logging_config import configure_logging
 from afnio.models import ChatCompletionModel
 from afnio.models.openai import OpenAI
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
-from afnio.tellurio.client import get_default_client
 
 # Configure logging
 configure_logging()
@@ -80,7 +80,7 @@ class ModelClientSingleton:
     ):
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             payload = {
                 "model_id": model_id,

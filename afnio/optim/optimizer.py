@@ -23,10 +23,10 @@ from afnio._variable import Variable
 from afnio.logging_config import configure_logging
 from afnio.models.model import BaseModel
 from afnio.models.model_registry import MODEL_REGISTRY
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._optimizer_registry import register_optimizer
 from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
-from afnio.tellurio.client import get_default_client
 
 StateDict: TypeAlias = Dict[str, Any]
 
@@ -71,7 +71,7 @@ class Optimizer:
 
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             params = list(params)
             payload = {
@@ -406,7 +406,7 @@ class Optimizer:
         }
 
         try:
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
             response = run_in_background_loop(ws_client.call("clear_grad", payload))
             if "error" in response:
                 raise RuntimeError(
@@ -491,7 +491,7 @@ class Optimizer:
 
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             payload = {
                 "optimizer_id": self.optimizer_id,
@@ -560,7 +560,7 @@ class Optimizer:
         """
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             messages = self.defaults.get("messages", [])
             payload = {

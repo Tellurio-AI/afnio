@@ -4,9 +4,9 @@ from abc import ABC
 from typing import Dict, List, Optional, Union
 
 from afnio.logging_config import configure_logging
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._model_registry import register_model
-from afnio.tellurio.client import get_default_client
 from afnio.tellurio.consent import check_consent
 
 INITIAL_COST = {"cost": {"amount": 0.0, "currency": "USD"}}
@@ -39,7 +39,7 @@ class BaseModel(ABC):
 
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             payload = {
                 "class_type": self.__class__.__name__,
@@ -138,7 +138,7 @@ class BaseModel(ABC):
 
         try:
             # Get the singleton websocket client
-            _, ws_client = get_default_client()
+            _, ws_client = get_default_clients()
 
             payload = {
                 "model_id": self.model_id,

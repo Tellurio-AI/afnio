@@ -10,10 +10,10 @@ import afnio as hf
 from afnio._variable import _allow_grad_fn_assignment
 from afnio.autodiff.graph import Node
 from afnio.tellurio import login
+from afnio.tellurio._client_manager import get_default_clients
 from afnio.tellurio._eventloop import run_in_background_loop
 from afnio.tellurio._node_registry import register_node
 from afnio.tellurio._variable_registry import VARIABLE_REGISTRY
-from afnio.tellurio.client import get_default_client
 from afnio.tellurio.run import init
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
 
@@ -69,7 +69,7 @@ class TestClientToServerVariableSync:
         This function uses the TellurioWebSocketClient to send a request to the server
         and retrieve the variable's data.
         """
-        _, ws_client = get_default_client()
+        _, ws_client = get_default_clients()
         response = run_in_background_loop(
             ws_client.call("get_variable", {"variable_id": variable_id})
         )
