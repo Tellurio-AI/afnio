@@ -151,16 +151,19 @@ class TellurioClient:
             logger.debug(f"API key is valid for user '{username}'.")
 
             # Save the API key securely only if it was provided and is valid
-            if (api_key or os.getenv("TELLURIO_API_KEY")) and _is_keyring_usable():
-                keyring.set_password(
-                    self.service_name, response_data["username"], self.api_key
-                )
-                logger.info("API key provided and stored securely in local keyring.")
-                save_username(response_data["username"])
-            else:
-                logger.info(
-                    "Keyring is not available; skipping secure storage of API key."
-                )
+            if api_key or os.getenv("TELLURIO_API_KEY"):
+                if _is_keyring_usable():
+                    keyring.set_password(
+                        self.service_name, response_data["username"], self.api_key
+                    )
+                    logger.info(
+                        "API key provided and stored securely in local keyring."
+                    )
+                    save_username(response_data["username"])
+                else:
+                    logger.info(
+                        "Keyring is not available; skipping secure storage of API key."
+                    )
 
             return {
                 "email": email,
