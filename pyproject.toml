@@ -10,16 +10,18 @@ keywords = ["ai-agent", "language-models", "prompt-optimization", "afnio"]
 requires-python = ">=3.9"
 readme = { file = "README.md", content-type = "text/markdown" }
 dependencies = [
-    "click>=8.1.8",
-    "httpx>=0.28.1",
-    "ipython>=8.18.1",
-    "ipywidgets>=8.1.7",
-    "keyring>=25.6.0",
-    "openai>=1.106.1",
-    "python-dotenv>=1.1.0",
-    "python-slugify>=8.0.4",
-    "rich>=14.0.0",
-    "websockets>=15.0.1",
+    "click>=8.1.8, <9",
+    "httpx>=0.28.1, <1",
+    # Google Colab only supports ipython==7.34.0
+    "ipython>=7.34.0, <10",
+    "ipywidgets>=8.1.7, <9",
+    "keyring>=25.6.0, <26",
+    "openai>=1.106.1, <2",
+    "python-dotenv>=1.1.0, <2",
+    "python-slugify>=8.0.4, <9",
+    # Google Colab only supports rich<14
+    "rich>=13.9.4, <15",
+    "websockets>=15.0.1, <16",
 ]
 
 [project.optional-dependencies]
