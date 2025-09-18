@@ -141,8 +141,12 @@ class Trainer:
     def _in_notebook(self):
         """Check if the code is running in a Jupyter notebook."""
         try:
-            shell = get_ipython().__class__.__name__
-            return shell == "ZMQInteractiveShell"
+            ip = get_ipython()
+            if ip is None:
+                return False
+            shell = ip.__class__.__name__
+            # VS Code, Colab, Jupyter
+            return shell in ("ZMQInteractiveShell", "Shell")
         except Exception:
             return False
 
