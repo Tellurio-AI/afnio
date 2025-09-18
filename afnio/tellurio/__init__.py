@@ -92,7 +92,7 @@ def _close_singleton_ws_client():
     that the WebSocket connection is properly closed and resources are cleaned up.
     """
     try:
-        _, ws_client = get_default_clients()
+        _, ws_client = get_default_clients(login=False)
         if ws_client and ws_client.connection:
             run_in_background_loop(ws_client.close())
     except Exception as e:
