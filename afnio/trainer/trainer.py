@@ -2,7 +2,6 @@ import logging
 import os
 import threading
 import time
-import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Union
@@ -23,7 +22,7 @@ from rich.text import Text
 import afnio as hf
 import afnio.cognitive as cog
 from afnio._variable import Variable
-from afnio.logging_config import set_logger_level
+from afnio.logging_config import configure_logging, set_logger_level
 from afnio.models.model import BaseModel
 from afnio.tellurio import log
 from afnio.utils.data import DataLoader
@@ -31,6 +30,10 @@ from afnio.utils.data import DataLoader
 _PATH = Union[str, Path]
 TRAIN_DATALOADER = Iterable[Any]
 EVAL_DATALOADER = Iterable[Any]
+
+# Configure logging
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 class MinutesPerStepColumn(ProgressColumn):
@@ -207,9 +210,8 @@ class Trainer:
                     raise RuntimeError(
                         f"Forward pass in {step_name}() failed after {max_retries} retries."  # noqa: E501
                     ) from e
-                warnings.warn(
+                logger.warning(
                     f"Retry {retry_count}/{max_retries}: Forward pass in {step_name}() failed, retrying...",  # noqa: E501
-                    RuntimeWarning,
                 )
 
     def _run_training_step_with_retries(
@@ -246,9 +248,8 @@ class Trainer:
                     raise RuntimeError(
                         f"training_step() failed after {max_retries} retries: {e}"
                     ) from e
-                warnings.warn(
+                logger.warning(
                     f"Retry {retry_count}/{max_retries}: training_step() failed with error '{e}', retrying...",  # noqa: E501
-                    RuntimeWarning,
                 )
 
     def _parse_step_metrics(self, step_out, step_name="training_step"):
