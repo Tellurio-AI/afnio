@@ -40,7 +40,7 @@ INTERNAL_ERROR = -32603
 
 
 # Methods that may take a long time to complete and require heartbeats
-LONG_RUNNING_METHODS = {"run_backward"}
+LONG_RUNNING_METHODS = {"run_function", "run_backward", "run_step", "run_optimizer_tgd"}
 
 
 class TellurioWebSocketClient:
