@@ -96,6 +96,7 @@ def backward(
     serialized_inputs = _serialize_arg(inputs)
 
     # Send the RPC call to the server
+    backprop_variable_ids = []
     try:
         # Get the singleton websocket client
         _, ws_client = get_default_clients()
@@ -162,4 +163,15 @@ def backward(
 
     except Exception as e:
         logger.error(f"Failed to share backward pass with the server: {e}")
+
+        # Clear all pending grad flags to avoid deadlocks
+        for var_id in backprop_variable_ids:
+            var = get_variable(var_id)
+            if var is not None:
+                var._pending_grad = False
+                logger.debug(
+                    f"Marked variable {var_id!r} as not pending for grad update "
+                    f"after error."
+                )
+
         raise

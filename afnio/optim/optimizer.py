@@ -546,6 +546,16 @@ class Optimizer:
 
         except Exception as e:
             logger.error(f"Failed to run optimization on the server: {e}")
+
+            # Clear all pending data flags to avoid deadlocks
+            for group in self.param_groups:
+                for p in group["params"]:
+                    p._pending_data = False
+                    logger.debug(
+                        f"Marked variable {p.variable_id!r} as not pending for data "
+                        f"update after error."
+                    )
+
             raise
 
     def add_param_group(self, param_group: Dict[str, Any]) -> None:
