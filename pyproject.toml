@@ -1,6 +1,6 @@
 [project]
 name = "afnio"
-version = "0.2.12"
+version = "0.3.0"
 description = "Afnio Python library and Tellurio Studio CLI tool"
 authors = [
     { name = "Tellurio", email = "contact@tellurio.ai" }
@@ -8,6 +8,12 @@ authors = [
 license = { file = "LICENSE.md" }
 keywords = ["ai-agent", "language-models", "prompt-optimization", "afnio"]
 requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12"
+]
 readme = { file = "README.md", content-type = "text/markdown" }
 dependencies = [
     "click>=8.1.8, <9",

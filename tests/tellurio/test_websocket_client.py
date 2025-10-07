@@ -1,8 +1,11 @@
+import asyncio
 import os
 
 import pytest
 import pytest_asyncio
 
+import afnio.cognitive.functional as F
+from afnio._variable import Variable
 from afnio.tellurio import login
 from afnio.tellurio.run import init
 from afnio.tellurio.websocket_client import TellurioWebSocketClient
@@ -116,6 +119,65 @@ class TestTellurioWebSocketClient:
         assert response["error"]["code"] == -32601
         assert response["error"]["message"] == "Method 'invalid_method' not found."
         assert response["error"]["data"] == {"method": "invalid_method"}
+
+    async def test_heartbeat_received_during_long_chat_completion(
+        self, monkeypatch, model
+    ):
+        """
+        Test that heartbeats are received by the client during a long-running
+        chat completion before the final response arrives.
+        """
+        # Track received heartbeats
+        received_heartbeats = []
+
+        # Save the original rpc_heartbeat method
+        original_rpc_heartbeat = TellurioWebSocketClient.rpc_heartbeat
+
+        async def counting_rpc_heartbeat(self, params):
+            received_heartbeats.append(params)
+            await original_rpc_heartbeat(self, params)
+
+        # Monkeypatch the heartbeat handler to count heartbeats
+        # but still run original logic
+        monkeypatch.setattr(
+            TellurioWebSocketClient, "rpc_heartbeat", counting_rpc_heartbeat
+        )
+
+        # Prepare chat completion input
+        system = Variable(
+            data="You are a helpful assistant.",
+            role="system instruction",
+            requires_grad=True,
+        )
+        query = Variable(
+            data="Tell me a long story.",
+            role="user query",
+            requires_grad=False,
+        )
+        messages = [
+            {"role": "system", "content": [system]},
+            {"role": "user", "content": [query]},
+        ]
+
+        # Run chat completion (this should trigger heartbeats)
+        result = F.chat_completion(
+            model,
+            messages,
+            inputs={},
+            model="gpt-5",
+            seed=42,
+            reasoning_effort="low",
+        )
+
+        # Wait for the result
+        if asyncio.iscoroutine(result):
+            result = await result
+
+        # Assert that at least one heartbeat was received before the response
+        assert len(received_heartbeats) > 0
+        # Check the content of the heartbeat
+        for hb in received_heartbeats:
+            assert "id" in hb
 
     # TODO: Finalize this method once backend has Celery long running tasks implemented
     # async def test_call_timeout(self, connected_ws_client: TellurioWebSocketClient):

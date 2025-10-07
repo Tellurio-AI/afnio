@@ -8,9 +8,7 @@ from afnio._variable import Variable
 from afnio.autodiff.basic_ops import Add, Split
 from afnio.autodiff.evaluator import DeterministicEvaluator
 from afnio.autodiff.grad_mode import no_grad
-from afnio.models.openai import AsyncOpenAI
 from afnio.tellurio import login
-from afnio.tellurio._model_registry import MODEL_REGISTRY
 from afnio.tellurio.run import init
 
 
@@ -36,22 +34,6 @@ def variables():
     x = Variable(data="abc", role="first input", requires_grad=True)
     y = Variable(data="def", role="second input", requires_grad=False)
     return x, y
-
-
-@pytest.fixture
-def model(monkeypatch):
-    """
-    Fixture to create an LM model instance.
-    """
-    # Forcing consent to sharing API keys
-    monkeypatch.setenv("ALLOW_API_KEY_SHARING", "true")
-
-    # Create OpenAI model client
-    api_key = os.getenv("OPENAI_API_KEY", "sk-test-1234567890abcdef")
-    model = AsyncOpenAI(api_key=api_key)
-    # Ensure model is registered
-    assert model.model_id in MODEL_REGISTRY
-    return model
 
 
 class TestFunctionSync:
@@ -239,7 +221,46 @@ class TestFunctionSync:
               ↗           ↘
             a  → → → → → → e
         """
+
+        def track_pending_grad_changes(var, changes_list):
+            """
+            Monkeypatches the Variable instance to track all changes to its
+            _pending_grad attribute.
+
+            Appends each new value (when changed) to changes_list, allowing tests to
+            verify the sequence of _pending_grad state transitions during backward and
+            clear operations.
+            """
+
+            # Save the original value without triggering notifications
+            object.__setattr__(
+                var, "_pending_grad_value", getattr(var, "_pending_grad", False)
+            )
+
+            def getter(self):
+                return object.__getattribute__(self, "_pending_grad_value")
+
+            def setter(self, value):
+                try:
+                    old_value = object.__getattribute__(self, "_pending_grad_value")
+                except AttributeError:
+                    old_value = False
+                if value != old_value:
+                    changes_list.append(value)
+                object.__setattr__(self, "_pending_grad_value", value)
+
+            # Monkeypatch the property
+            setattr(var.__class__, "_pending_grad", property(getter, setter))
+
+        # Initial variable
         a = Variable(data="abc_", role="first input", requires_grad=True)
+        assert a._pending_grad is False
+
+        # Track changes to _pending_grad
+        changes = []
+        track_pending_grad_changes(a, changes)
+
+        # Build the DAG and perform backward
         b = a + Variable(data="def_", role="second input")
         c = b + Variable(data="ghi_", role="third input")
         d = c + Variable(data="jkl_", role="fourth input")
@@ -248,10 +269,13 @@ class TestFunctionSync:
         gradient = Variable(data="MY_FEEDBACK", role="add gradient")
         e.backward(gradient)
 
-        # The variable should have _pending_grad set before clear_backward
-        assert a._pending_grad is True
+        # Right after `backward`, _pending_grad is True till the client receives the
+        # 'clear_backward' call. Both transitions (False -> True and True -> False)
+        # should be recorded in `changes`.
 
         # We are only able to read `a.grad` when we exit `_wait_for_pending()`
-        # and at that point, _pending_grad should be True
+        # and at that point, _pending_grad should be False again
         assert len(a.grad) == 2
         assert a._pending_grad is False
+
+        assert changes == [True, False]

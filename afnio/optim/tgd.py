@@ -236,4 +236,13 @@ def tgd(
         logger.debug("Functional TGD optimization executed successfully")
     except Exception as e:
         logger.error(f"Failed to run functional TGD optimization on the server: {e!r}")
+
+        # Clear all pending data flags to avoid deadlocks
+        for p in params:
+            p._pending_data = False
+            logger.debug(
+                f"Marked variable {p.variable_id!r} as not pending for data update "
+                f"after error."
+            )
+
         raise

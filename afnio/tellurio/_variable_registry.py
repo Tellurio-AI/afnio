@@ -1,6 +1,8 @@
+import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
+from afnio.logging_config import configure_logging
 from afnio.tellurio._node_registry import get_node
 
 if TYPE_CHECKING:
@@ -27,6 +29,11 @@ VARIABLE_REGISTRY: Dict[str, "Variable"] = {}
 # is registered, all Variables in the list for that node_id will have their grad_fn
 # set accordingly.
 PENDING_GRAD_FN_ASSIGNMENTS: Dict[str, list] = {}
+
+
+# Configure logging
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 def register_variable(var: "Variable"):
@@ -235,6 +242,7 @@ def clear_pending_grad(variable_ids: Optional[List[str]] = []):
         if var is None:
             raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
         var._pending_grad = False
+        logger.debug(f"Marked variable {var_id!r} as not pending for grad update.")
 
 
 def clear_pending_data(variable_ids: Optional[List[str]] = []):
@@ -252,6 +260,7 @@ def clear_pending_data(variable_ids: Optional[List[str]] = []):
         if var is None:
             raise RuntimeError(f"Variable with id '{var_id}' not found in registry.")
         var._pending_data = False
+        logger.debug(f"Marked variable {var_id!r} as not pending for data update.")
 
 
 @contextmanager

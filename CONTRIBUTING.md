@@ -143,13 +143,20 @@ flake8 .
 ```
 /
 ├── afnio/                  # Afnio framework
-│   └── tellurio/           # Tellurio integration
+│   ├── autodiff/           # Automatic differentiation engine
+│   ├── cognitive/          # Building blocks for graphs
+│   ├── models/             # LM models integrations
+│   ├── optim/              # Optimizers logic
+│   ├── tellurio/           # Tellurio integration
+│   ├── trainer/            # Trainer logic
+│   └── utils/              # Utilities like Datasets and DataLoaders
 ├── tests/                  # Automated testing
 ├── .vscode/                # VSCode config
 ├── .github/workflows/      # GitHub actions
-├── setup.py                # Package setup script
+├── pyproject.toml          # Package setup script
 ├── README.md
-└── CONTRIBUTING.md
+├── CONTRIBUTING.md
+└── LICENSE.md
 ```
 
 ---

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -38,6 +39,10 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 
 
+# Methods that may take a long time to complete and require heartbeats
+LONG_RUNNING_METHODS = {"run_function", "run_backward", "run_step", "run_optimizer_tgd"}
+
+
 class TellurioWebSocketClient:
     """
     A WebSocket client for interacting with the Tellurio backend.
@@ -51,7 +56,7 @@ class TellurioWebSocketClient:
         self,
         base_url: str = None,
         port: int = None,
-        default_timeout: int = 60,
+        default_timeout: int = 30,
     ):
         """
         Initializes the WebSocket client.
@@ -72,6 +77,7 @@ class TellurioWebSocketClient:
         self.connection: websockets.ClientConnection = None
         self.listener_task = None
         self.pending = {}  # req_id → Future
+        self._heartbeat_times = {}  # req_id -> last heartbeat time (monotonic)
 
     def _build_ws_url(self, base_url, port):
         """
@@ -274,6 +280,24 @@ class TellurioWebSocketClient:
             await self.connect()  # Attempt to reconnect
         except Exception as e:
             logger.error(f"Unexpected error in listener: {e}")
+
+    async def rpc_heartbeat(self, params):
+        """
+        Handle the 'heartbeat' JSON-RPC notification from the server.
+
+        This method is called when the server sends a heartbeat notification for a
+        long-running operation. It updates the last heartbeat timestamp for the
+        corresponding request ID, allowing the client to reset its timeout and avoid
+        prematurely timing out while the server is still processing the request.
+
+        Args:
+            params (dict): A dictionary with keys:
+                - "id": The request ID (str) associated with the long-running operation.
+        """
+        req_id = params.get("id")
+        if req_id:
+            self._heartbeat_times[req_id] = time.monotonic()
+            logger.debug(f"Received heartbeat for request {req_id}: {params!r}")
 
     async def rpc_create_variable(self, params):
         """
@@ -722,13 +746,39 @@ class TellurioWebSocketClient:
         # Wait for response
         future = asyncio.get_running_loop().create_future()
         self.pending[req_id] = future
-        try:
-            return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.error(f"Request timed out: {request}")
-            raise
-        finally:
-            self.pending.pop(req_id, None)
+
+        if method in LONG_RUNNING_METHODS:
+            # Heartbeat-aware wait loop
+            self._heartbeat_times[req_id] = time.monotonic()
+            last_heartbeat = time.monotonic()
+            try:
+                while True:
+                    try:
+                        # Using `shield` to prevent cancellation of the future to allow
+                        # heartbeat updates to keep it alive
+                        return await asyncio.wait_for(
+                            asyncio.shield(future), timeout=timeout
+                        )
+                    except asyncio.TimeoutError:
+                        now = time.monotonic()
+                        last_heartbeat = self._heartbeat_times.get(
+                            req_id, last_heartbeat
+                        )
+                        if now - last_heartbeat > timeout:
+                            logger.error(f"Request timed out (no heartbeat): {request}")
+                            raise
+            finally:
+                self.pending.pop(req_id, None)
+                self._heartbeat_times.pop(req_id, None)
+        else:
+            # Standard wait
+            try:
+                return await asyncio.wait_for(future, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.error(f"Request timed out: {request}")
+                raise
+            finally:
+                self.pending.pop(req_id, None)
 
     async def close(self):
         """
