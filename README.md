@@ -42,7 +42,7 @@ afnio login
 
 4. Copy and run this sample code to optimize your AI agent and track its quality metrics. Your first Run will appear in [Tellurio Studio](https://platform.tellurio.ai/). Your system's checkpoints will be saved under the local `checkpoint/` directory created in the same path where you executed the script.
 
-   _This example uses [Meta's Facility Support Analyzer dataset](github.com/meta-llama/llama-prompt-ops/tree/main/use-cases/facility-support-analyzer) to classify enterprise support emails as positive, neutral, or negative. **Expect accuracy to improve from 66.4% ±1.5% to 80.8% ±12.5% — a +14.5% absolute gain.**_
+   _This example uses [Meta's Facility Support Analyzer dataset](https://github.com/meta-llama/prompt-ops/tree/main/use-cases/facility-support-analyzer) to classify enterprise support emails as positive, neutral, or negative. **Expect accuracy to improve from 66.4% ±1.5% to 80.8% ±12.5% — a +14.5% absolute gain.**_
 
 ````python
 import json
