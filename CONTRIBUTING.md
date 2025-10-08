@@ -159,6 +159,10 @@ flake8 .
 └── LICENSE.md
 ```
 
+## 🧾 Contributor License Agreement (CLA)
+
+Before we can accept your pull request, you’ll need to [sign our CLA](https://gist.github.com/dmpiergiacomo/7e031099d5a02fbede9bc8910beb44bb). If you haven’t yet, our CLA assistant will prompt you automatically when you open a PR.
+
 ---
 
 Thank you for contributing to Afnio! 💙

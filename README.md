@@ -8,11 +8,13 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> •
   <a href="#key-concepts">Key Concepts</a> •
-  <a href="#contributing-guidelines">Contributing Guidelines</a>
+  <a href="#contributing-guidelines">Contributing Guidelines</a> •
+  <a href="#license">License</a>
 </p>
 
 [![PyPI - Version](https://img.shields.io/pypi/v/afnio)](https://pypi.org/project/afnio/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/afnio)](https://pypi.org/project/afnio/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/Tellurio-AI/afnio/blob/main/LICENSE.md)
 
 </div>
 
@@ -185,3 +187,14 @@ run.finish()
 ## Contributing Guidelines
 
 :computer: Would love to contribute? Please follows our [contribution guidelines](CONTRIBUTING.md).
+
+## License
+
+Afnio is open-source under the GNU Affero General Public License v3 (AGPLv3).
+
+You can freely use Afnio — in personal, research, or commercial projects.  
+You don’t need to open-source your code; the license only applies if you modify Afnio itself and share that version publicly.
+
+We keep Afnio open so everyone can build freely while helping the project grow.
+
+💌 Questions or ideas? We’d love to hear from you at contact@tellurio.ai.
