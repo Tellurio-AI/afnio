@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 from keyring import set_keyring
-from slugify import slugify
+from slugify import slugify #somehow this is causing issuees for me running tests
 
 from afnio.tellurio import utils as tellurio_utils
 from afnio.tellurio._client_manager import get_default_clients
