@@ -186,7 +186,7 @@ run.finish()
 
 ## Contributing Guidelines
 
-:computer: Would love to contribute? Please follows our [contribution guidelines](CONTRIBUTING.md).
+💻 Would love to contribute? Please follows our [contribution guidelines](CONTRIBUTING.md).
 
 ## License
 
