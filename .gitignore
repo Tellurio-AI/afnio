@@ -181,3 +181,7 @@ cython_debug/
 
 # Temporary folder
 tmp/
+
+#Sphinx docs
+docs/_build/
+docs/source/generated/
